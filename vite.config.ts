@@ -12,18 +12,12 @@ export default defineConfig(({ mode }) => ({
     port: 8080,
 
     proxy: {
+      // Single API target: the main PHP backend at C:\xampp\htdocs\api
+      //   /api/... -> http://127.0.0.1/api/...
       "/api": {
         target: "http://127.0.0.1",
         changeOrigin: true,
         secure: false,
-      },
-
-      "/php-api": {
-        target: "http://127.0.0.1",
-        changeOrigin: true,
-        secure: false,
-        rewrite: (path) =>
-          path.replace(/^\/php-api/, "/Paynal-main/php-api"),
       },
     },
   },

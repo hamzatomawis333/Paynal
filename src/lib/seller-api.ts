@@ -242,11 +242,15 @@ export async function uploadProductImage(file: File): Promise<{ success: boolean
   }
 
   if (lastNetworkError) {
-    throw new Error("Cannot connect to XAMPP API. Restart npm run dev, start Apache/MySQL, then test this on your PC: http://localhost/api/auth/login.php or http://localhost/php-api/auth/login.php");
+    throw new Error(
+      "Cannot connect to the API. Start Apache/MySQL, restart npm run dev, then check http://localhost:8080/api/auth/login.php"
+    );
   }
 
   if (lastRetryableError) {
-    throw new Error(`XAMPP API upload endpoint is not reachable (${lastRetryableError}). Put the backend in either C:\\xampp\\htdocs\\api or C:\\xampp\\htdocs\\php-api, then restart npm run dev.`);
+    throw new Error(
+      `API upload endpoint is not reachable (${lastRetryableError}). The backend must be at C:\\xampp\\htdocs\\api, then restart npm run dev.`
+    );
   }
 
   throw new Error("Upload failed");

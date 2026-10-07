@@ -1,17 +1,33 @@
 // API base resolution.
 //
 // In development the app is served by Vite (port 8080) and every request is
-// same-origin: a relative base such as "/api" is proxied by Vite to Apache, so
+// same-origin: the relative base "/api" is proxied by Vite to Apache, so
 // there is no CORS preflight and no cross-origin credential handling.
 //
-// Vite proxies (see vite.config.ts):
-//   /api     -> http://127.0.0.1/api                  (C:\xampp\htdocs\api)
-//   /php-api -> http://127.0.0.1/Paynal-main/php-api  (php-api\ in this repo)
+// Vite proxy (see vite.config.ts):
+//   /api -> http://127.0.0.1/api  (C:\xampp\htdocs\api)
 //
-// Override with VITE_API_BASE in a .env file if an absolute URL is required.
+// Note: the Vite `base` ("/Paynal/") only affects static frontend assets
+// (JS/CSS/images). It is never used as an API base URL.
 const REQUEST_TIMEOUT_MS = 15_000;
-const API_BASE_STORAGE_KEY = "maranao_api_base";
-const DEFAULT_API_BASES = ["/api", "/php-api"];
+
+// Legacy key: older builds cached an API base here. It is deleted on load so a
+// stale value from a previous session can never win.
+const LEGACY_API_BASE_STORAGE_KEY = "maranao_api_base";
+
+const API_BASE = "/api";
+
+function clearLegacyApiBase() {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(LEGACY_API_BASE_STORAGE_KEY);
+  } catch {
+    // Storage can be unavailable (private mode); a stale value is harmless
+    // because it is never read.
+  }
+}
+
+clearLegacyApiBase();
 
 import { getErrorMessage } from "./errors";
 import type {
@@ -20,73 +36,21 @@ import type {
   ApiOrderDetail,
 } from "@/types/api";
 
-function normalizeApiBase(base: string): string {
-  return base.trim().replace(/\/+$/, "");
-}
-
-function isLocalDevelopmentHost(hostname: string): boolean {
-  return (
-    hostname === "localhost" ||
-    hostname === "127.0.0.1" ||
-    hostname === "0.0.0.0" ||
-    /^10\.\d+\.\d+\.\d+$/.test(hostname) ||
-    /^192\.168\.\d+\.\d+$/.test(hostname) ||
-    /^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/.test(hostname)
-  );
-}
-
-// A cached base is only trusted when it still points at this dev server
-// (relative path), at localhost, or at this exact origin. Anything else is a
-// stale value left over from an earlier session: it used to be tried *before*
-// the defaults, so a single bad value could shadow the working base forever.
-function getSafeStoredBase(stored: string | null | undefined): string | null {
-  if (!stored) return null;
-  const normalized = normalizeApiBase(String(stored));
-  if (!normalized) return null;
-  if (normalized.startsWith("/")) return normalized;
-
-  try {
-    const url = new URL(normalized);
-    const pointsAtThisDevServer =
-      typeof window !== "undefined" && url.origin === window.location.origin;
-    return isLocalDevelopmentHost(url.hostname) || pointsAtThisDevServer ? normalized : null;
-  } catch {
-    return null;
-  }
-}
-
+// The app talks to exactly one backend: the main API behind the Vite proxy.
 export function getApiBaseCandidates(): string[] {
-  const bases: string[] = [];
-  const add = (base: string | null | undefined) => {
-    const normalized = base ? normalizeApiBase(String(base)) : "";
-    if (normalized && !bases.includes(normalized)) bases.push(normalized);
-  };
-
-  add(import.meta.env?.VITE_API_BASE);
-
-  if (typeof window !== "undefined") {
-    add(getSafeStoredBase(localStorage.getItem(API_BASE_STORAGE_KEY)));
-  }
-
-  for (const base of DEFAULT_API_BASES) add(base);
-
-  return bases.length ? bases : [...DEFAULT_API_BASES];
+  return [API_BASE];
 }
 
-export function rememberWorkingApiBase(base: string) {
-  if (typeof window === "undefined") return;
-  const safeBase = getSafeStoredBase(base);
-  if (safeBase) {
-    localStorage.setItem(API_BASE_STORAGE_KEY, safeBase);
-  } else {
-    localStorage.removeItem(API_BASE_STORAGE_KEY);
-  }
+// Kept for callers that used to record which base worked; there is nothing to
+// record anymore, but the legacy key is cleared defensively.
+export function rememberWorkingApiBase(_base: string) {
+  clearLegacyApiBase();
 }
 
-export const API_BASE = getApiBaseCandidates()[0];
+export { API_BASE };
 
 export function getCurrentApiBase(): string {
-  return getApiBaseCandidates()[0] ?? DEFAULT_API_BASES[0];
+  return API_BASE;
 }
 
 export function resolveApiImageUrl(imageUrl?: string | null): string {
@@ -94,11 +58,7 @@ export function resolveApiImageUrl(imageUrl?: string | null): string {
   if (!raw) return "/placeholder.svg";
   if (/^(https?:|data:|blob:)/i.test(raw)) return raw;
   if (raw.startsWith("/")) return raw;
-  const cleanPath = raw.replace(/^\/+/, "");
-  if (cleanPath.startsWith("api/") || cleanPath.startsWith("php-api/")) {
-    return `/${cleanPath}`;
-  }
-  return `${getCurrentApiBase()}/${cleanPath}`;
+  return `${API_BASE}/${raw.replace(/^\/+/, "")}`;
 }
 
 // Helper: get auth token from localStorage
@@ -119,75 +79,60 @@ export async function apiFetch<T>(endpoint: string, options: RequestInit = {}): 
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const failures: string[] = [];
+  const requestUrl = `${API_BASE}${endpoint}`;
+  let failure = "";
 
-  for (const base of getApiBaseCandidates()) {
-    const requestUrl = `${base}${endpoint}`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(requestUrl, {
+      ...options,
+      headers,
+      signal: options.signal ?? controller.signal,
+    });
 
+    const text = await response.text();
+    const contentType = response.headers.get("content-type") || "";
+
+    let data: unknown = null;
+    let parsed = true;
     try {
-      const response = await fetch(requestUrl, {
-        ...options,
-        headers,
-        signal: options.signal ?? controller.signal,
-      });
-
-      const text = await response.text();
-      const contentType = response.headers.get("content-type") || "";
-
-      let data: unknown = null;
-      let parsed = true;
-      try {
-        data = text ? JSON.parse(text) : {};
-      } catch {
-        parsed = false;
-      }
-
-      if (!parsed || !contentType.includes("json")) {
-        failures.push(
-          `${requestUrl} -> HTTP ${response.status}, content-type "${contentType || "none"}"` +
-            (parsed ? "" : ", body is not valid JSON")
-        );
-        continue;
-      }
-
-      rememberWorkingApiBase(base);
-
-      if (!response.ok) {
-        throw new Error(getErrorMessage(data, "Something went wrong"));
-      }
-
-      return data as T;
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") {
-        failures.push(`${requestUrl} -> timed out after ${REQUEST_TIMEOUT_MS / 1000}s`);
-        continue;
-      }
-      if (error instanceof TypeError) {
-        failures.push(`${requestUrl} -> ${error.message}`);
-        continue;
-      }
-      throw error;
-    } finally {
-      clearTimeout(timeout);
+      data = text ? JSON.parse(text) : {};
+    } catch {
+      parsed = false;
     }
+
+    if (!parsed || !contentType.includes("json")) {
+      failure =
+        `${requestUrl} -> HTTP ${response.status}, content-type "${contentType || "none"}"` +
+        (parsed ? "" : ", body is not valid JSON");
+    } else if (!response.ok) {
+      throw new Error(getErrorMessage(data, "Something went wrong"));
+    } else {
+      return data as T;
+    }
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      failure = `${requestUrl} -> timed out after ${REQUEST_TIMEOUT_MS / 1000}s`;
+    } else if (error instanceof TypeError) {
+      failure = `${requestUrl} -> ${error.message}`;
+    } else {
+      throw error;
+    }
+  } finally {
+    clearTimeout(timeout);
   }
 
   throw new Error(
     `Cannot reach the PHP API (${endpoint}).\n\n` +
-      `Tried:\n${failures.map((line) => `  - ${line}`).join("\n")}\n\n` +
-      `The dev server proxies to Apache, so this usually means Apache or MySQL is ` +
-      `stopped, or the backend folder is missing.\n` +
-      `Confirm one of these returns JSON in the browser:\n` +
-      `  http://localhost:8080/api/products/index.php\n` +
-      `  http://localhost:8080/php-api/products/index.php\n\n` +
-      `Backend folder (one of these must exist):\n` +
-      `  C:\\xampp\\htdocs\\api\n` +
-      `  C:\\xampp\\htdocs\\Paynal-main\\php-api\n\n` +
-      `If the base URL was cached from an earlier session, clear it in the browser ` +
-      `console and reload:\n  localStorage.removeItem("maranao_api_base"); location.reload();`
+      `Tried:\n  - ${failure}\n\n` +
+      `The dev server proxies /api to Apache, so this usually means Apache or MySQL ` +
+      `is stopped, or the backend folder is missing.\n` +
+      `Confirm this returns JSON in the browser:\n` +
+      `  http://localhost:8080/api/products/index.php\n\n` +
+      `Backend folder: C:\\xampp\\htdocs\\api\n\n` +
+      `Vite proxy: /api -> http://127.0.0.1/api (see vite.config.ts)`
   );
 }
 
