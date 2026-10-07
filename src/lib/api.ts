@@ -1,21 +1,25 @@
 // API base resolution.
 //
+// The PHP API ships inside this project: <project>/php-api
+//   (C:\xampp\htdocs\Paynal-main\php-api)
+//
 // In development the app is served by Vite (port 8080) and every request is
-// same-origin: the relative base "/api" is proxied by Vite to Apache, so
+// same-origin: the relative base "/php-api" is proxied by Vite to Apache, so
 // there is no CORS preflight and no cross-origin credential handling.
 //
 // Vite proxy (see vite.config.ts):
-//   /api -> http://127.0.0.1/api  (C:\xampp\htdocs\api)
+//   /php-api -> http://127.0.0.1/<project-folder>/php-api
+//            -> C:\xampp\htdocs\Paynal-main\php-api
 //
 // Note: the Vite `base` ("/Paynal/") only affects static frontend assets
 // (JS/CSS/images). It is never used as an API base URL.
 const REQUEST_TIMEOUT_MS = 15_000;
 
-// Legacy key: older builds cached an API base here. It is deleted on load so a
-// stale value from a previous session can never win.
+// Legacy key: older builds cached an API base here ("/api", absolute URLs).
+// It is deleted on load so a stale value from a previous session can never win.
 const LEGACY_API_BASE_STORAGE_KEY = "maranao_api_base";
 
-const API_BASE = "/api";
+const API_BASE = "/php-api";
 
 function clearLegacyApiBase() {
   if (typeof window === "undefined") return;
@@ -127,12 +131,12 @@ export async function apiFetch<T>(endpoint: string, options: RequestInit = {}): 
   throw new Error(
     `Cannot reach the PHP API (${endpoint}).\n\n` +
       `Tried:\n  - ${failure}\n\n` +
-      `The dev server proxies /api to Apache, so this usually means Apache or MySQL ` +
-      `is stopped, or the backend folder is missing.\n` +
+      `The dev server proxies /php-api to Apache, so this usually means Apache or ` +
+      `MySQL is stopped, or the php-api folder is missing.\n` +
       `Confirm this returns JSON in the browser:\n` +
-      `  http://localhost:8080/api/products/index.php\n\n` +
-      `Backend folder: C:\\xampp\\htdocs\\api\n\n` +
-      `Vite proxy: /api -> http://127.0.0.1/api (see vite.config.ts)`
+      `  http://localhost:8080/php-api/products/index.php\n\n` +
+      `Backend folder: C:\\xampp\\htdocs\\Paynal-main\\php-api\n\n` +
+      `Vite proxy: /php-api -> http://127.0.0.1/Paynal-main/php-api (see vite.config.ts)`
   );
 }
 
