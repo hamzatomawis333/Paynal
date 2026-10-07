@@ -1,46 +1,45 @@
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { Helmet } from "react-helmet-async";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { useAdminOrders } from "@/hooks/useAdmin";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { TableSkeleton } from "@/components/LoadingSkeleton";
-import { StatusBadge } from "@/components/StatusBadge";
-import { formatDate, formatMoney } from "@/lib/format";
-import { Search, ShoppingCart, Eye } from "lucide-react";
+import { formatDate } from "@/lib/format";
+import { Search, Users, Eye } from "lucide-react";
 
-const ORDER_STATUSES = [
-  "pending",
-  "confirmed",
-  "processing",
-  "shipped",
-  "delivered",
-  "cancelled",
-] as const;
+const initials = (name: string) =>
+  name
+    .split(/\s+/)
+    .map((w) => w[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
 
+// Landing page for Orders: shows buyer ACCOUNTS only (like the Sellers page).
+// Clicking one drills into that buyer's orders at /admin/orders/buyer/:id.
 const AdminOrders = () => {
-  const [status, setStatus] = useState("all");
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
 
-  const { data: orders, isLoading, isError, refetch } = useAdminOrders({
-    status,
-    search: debouncedSearch,
-  });
+  const { data, isLoading, isError, refetch } = useAdminOrders();
+  const buyers = data?.buyers ?? [];
 
-  const hasFilters = status !== "all" || debouncedSearch !== "";
-
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search.trim()), 400);
-    return () => clearTimeout(t);
-  }, [search]);
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return buyers;
+    return buyers.filter(
+      (b) => b.full_name.toLowerCase().includes(q) || b.email.toLowerCase().includes(q)
+    );
+  }, [buyers, search]);
 
   return (
     <AdminLayout>
@@ -49,70 +48,51 @@ const AdminOrders = () => {
       <div className="space-y-6">
         <PageHeader
           title="Orders"
-          subtitle="Search and inspect every order in the store"
+          subtitle="Pick a buyer account to see all of their orders"
         />
 
         <Card>
           <CardHeader>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <CardTitle className="text-base">All Orders ({orders?.length ?? 0})</CardTitle>
-              <div className="flex flex-wrap gap-2">
-                <div className="relative">
-                  <Search
-                    className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-                    aria-hidden="true"
-                  />
-                  <Input
-                    className="w-52 pl-9"
-                    placeholder="Search by order #, buyer..."
-                    aria-label="Search orders by order number or buyer"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                  />
-                </div>
-                <Select value={status} onValueChange={setStatus}>
-                  <SelectTrigger className="w-36" aria-label="Filter by order status">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Statuses</SelectItem>
-                    {ORDER_STATUSES.map((s) => (
-                      <SelectItem key={s} value={s} className="capitalize">
-                        {s}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <CardTitle className="text-base">Buyer Accounts ({filtered.length})</CardTitle>
+              <div className="relative">
+                <Search
+                  className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+                  aria-hidden="true"
+                />
+                <Input
+                  className="w-52 pl-9"
+                  placeholder="Search by name, email..."
+                  aria-label="Search buyer accounts by name or email"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
               </div>
             </div>
           </CardHeader>
           <CardContent>
             {isLoading ? (
-              <TableSkeleton cols={6} />
+              <TableSkeleton cols={4} />
             ) : isError ? (
               <ErrorState dense onRetry={() => void refetch()} />
-            ) : (orders ?? []).length === 0 ? (
+            ) : filtered.length === 0 ? (
               <EmptyState
                 dense
-                icon={ShoppingCart}
-                title={hasFilters ? "No orders match your filters" : "No orders yet"}
+                icon={Users}
+                title={
+                  search
+                    ? "No buyers match your search"
+                    : "No buyer accounts yet"
+                }
                 description={
-                  hasFilters
-                    ? "Try a different search term or status filter."
-                    : "Placed orders will appear here."
+                  search
+                    ? "Try a different name or email."
+                    : "Registered buyer accounts will appear here."
                 }
                 action={
-                  hasFilters && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setSearch("");
-                        setDebouncedSearch("");
-                        setStatus("all");
-                      }}
-                    >
-                      Clear filters
+                  search && (
+                    <Button variant="outline" size="sm" onClick={() => setSearch("")}>
+                      Clear search
                     </Button>
                   )
                 }
@@ -121,54 +101,48 @@ const AdminOrders = () => {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Order #</TableHead>
                     <TableHead>Buyer</TableHead>
-                    <TableHead className="hidden md:table-cell">Items</TableHead>
-                    <TableHead>Payment</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="hidden lg:table-cell">Placed</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                    <TableHead className="w-10" aria-label="Actions" />
+                    <TableHead className="hidden md:table-cell">Orders</TableHead>
+                    <TableHead className="hidden md:table-cell">Last Order</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(orders ?? []).map((o) => (
-                    <TableRow key={o.id}>
-                      <TableCell className="font-medium text-foreground">
-                        {o.order_number}
-                        <span className="block text-xs font-normal text-muted-foreground md:hidden">
-                          {o.buyer_name}
-                        </span>
-                      </TableCell>
+                  {filtered.map((b) => (
+                    <TableRow
+                      key={b.id}
+                      className="cursor-pointer"
+                      onClick={() => navigate(`/admin/orders/buyer/${b.id}`)}
+                    >
                       <TableCell>
-                        <span className="block font-medium text-foreground">{o.buyer_name}</span>
-                        <span className="block text-xs text-muted-foreground lg:hidden">{o.buyer_email}</span>
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-9 w-9">
+                            <AvatarImage src={b.avatar_url || undefined} alt="" />
+                            <AvatarFallback>{initials(b.full_name)}</AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0">
+                            <span className="block truncate font-medium text-foreground">
+                              {b.full_name}
+                            </span>
+                            <span className="block truncate text-xs font-normal text-muted-foreground">
+                              {b.email}
+                            </span>
+                          </div>
+                        </div>
                       </TableCell>
                       <TableCell className="hidden text-muted-foreground md:table-cell">
-                        {Number(o.item_count)}
+                        {Number(b.order_count)}
                       </TableCell>
-                      <TableCell>
-                        <StatusBadge
-                          status={o.payment_status}
-                          kind="payment"
-                          audience="buyer"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <StatusBadge status={o.status} kind="order" />
-                      </TableCell>
-                      <TableCell className="hidden text-muted-foreground lg:table-cell">
-                        {formatDate(o.created_at)}
-                      </TableCell>
-                      <TableCell className="text-right font-medium text-foreground">
-                        {formatMoney(o.total_amount)}
+                      <TableCell className="hidden text-muted-foreground md:table-cell">
+                        {b.last_order_at ? formatDate(b.last_order_at) : "—"}
                       </TableCell>
                       <TableCell className="text-right">
                         <Button asChild variant="ghost" size="icon">
                           <Link
-                            to={`/admin/orders/${o.id}`}
-                            title={`View order ${o.order_number}`}
-                            aria-label={`View order ${o.order_number}`}
+                            to={`/admin/orders/buyer/${b.id}`}
+                            title={`View orders of ${b.full_name}`}
+                            aria-label={`View orders of ${b.full_name}`}
+                            onClick={(e) => e.stopPropagation()}
                           >
                             <Eye className="h-4 w-4" aria-hidden="true" />
                           </Link>

@@ -162,6 +162,129 @@ function gcash_money(float $amount): string
 }
 
 /**
+ * Appends one row to payment_events for a SUBSCRIPTION payment.
+ *
+ * payment_id stays NULL (it is only NOT NULL historically; the migration made
+ * it nullable) and subscription_id carries the reference instead. Same
+ * never-throw contract as logPaymentEvent(): auditing must not be able to fail
+ * a real transition.
+ */
+function logSubscriptionPaymentEvent(
+    mysqli $conn,
+    int $subscriptionId,
+    ?int $actorId,
+    ?string $actorRole,
+    string $eventType,
+    ?string $fromStatus,
+    ?string $toStatus,
+    ?string $note = null,
+    ?string $reference = null
+): void {
+    $paymentId = null;
+    $stmt = $conn->prepare("INSERT INTO payment_events
+        (payment_id, subscription_id, actor_id, actor_role, event_type, from_status, to_status, note, reference_snapshot)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    $stmt->bind_param('iiissssss', $paymentId, $subscriptionId, $actorId, $actorRole, $eventType, $fromStatus, $toStatus, $note, $reference);
+    $stmt->execute();
+}
+
+/**
+ * Returns the existing seller<->admin conversation, creating it only if absent.
+ *
+ * Same NULL-unique-key caveat as ensureBuyerSellerConversation(): the explicit
+ * SELECT-then-INSERT is the dedupe. For seller_admin, buyer_id = the seller
+ * (the initiator) and seller_id = the admin, which is how start-admin-chat.php
+ * and messages/conversations.php both store it.
+ */
+function ensureSellerAdminConversation(mysqli $conn, int $sellerId): ?int
+{
+    $adminStmt = $conn->prepare("SELECT id FROM users WHERE role = 'admin' ORDER BY id ASC LIMIT 1");
+    $adminStmt->execute();
+    $admin = $adminStmt->get_result()->fetch_assoc();
+    if (!$admin) {
+        return null;
+    }
+    $adminId = (int) $admin['id'];
+
+    $stmt = $conn->prepare("SELECT id FROM conversations
+        WHERE buyer_id = ? AND seller_id = ? AND product_id IS NULL AND type = 'seller_admin'
+        ORDER BY id ASC LIMIT 1");
+    $stmt->bind_param('ii', $sellerId, $adminId);
+    $stmt->execute();
+    $existing = $stmt->get_result()->fetch_assoc();
+    if ($existing) {
+        return (int) $existing['id'];
+    }
+
+    $stmt = $conn->prepare("INSERT INTO conversations (buyer_id, seller_id, product_id, type) VALUES (?, ?, NULL, 'seller_admin')");
+    $stmt->bind_param('ii', $sellerId, $adminId);
+    $stmt->execute();
+    $conversationId = (int) $conn->insert_id;
+
+    $stmt = $conn->prepare("UPDATE conversations SET last_message_at = CURRENT_TIMESTAMP WHERE id = ?");
+    $stmt->bind_param('i', $conversationId);
+    $stmt->execute();
+
+    return $conversationId;
+}
+
+/**
+ * Reads the platform's destination GCash number from platform_settings.
+ *
+ * Returns '' when unset or implausible (same 10-15 digit rule as
+ * gcash_digits()), so callers can fail fast exactly like checkout does when a
+ * seller has no number configured.
+ */
+function platformGcashNumber(mysqli $conn): string
+{
+    $stmt = $conn->prepare("SELECT `value` FROM platform_settings WHERE `key` = 'gcash_number'");
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    if (!$row) {
+        return '';
+    }
+    return gcash_digits((string) ($row['value'] ?? ''));
+}
+
+/**
+ * Reads the platform's subscription price from platform_settings.
+ *
+ * The admin can change it any time (e.g. a monthly promo); it only applies to
+ * NEW subscription requests - amounts already stored on seller_subscriptions
+ * rows never move. Falls back to the default ₱299 until one is set.
+ */
+function platformSubscriptionPrice(mysqli $conn): float
+{
+    $stmt = $conn->prepare("SELECT `value` FROM platform_settings WHERE `key` = 'subscription_price'");
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    $price = $row ? (float) ($row['value'] ?? 0) : 0.0;
+    return $price >= 1.0 ? $price : 299.00;
+}
+
+/**
+ * Builds the automatic subscription payment inquiry posted into the
+ * seller<->admin conversation when a seller starts a subscription request.
+ */
+function buildSubscriptionPaymentInquiry(float $amount, string $gcashNumber): string
+{
+    return implode("\n", [
+        "Hello! I want to subscribe as a seller.",
+        '',
+        'Subscription plan: 30 days',
+        'Amount to send: ' . gcash_money($amount),
+        '',
+        'I will send the payment to your registered GCash number:',
+        $gcashNumber,
+        '',
+        'Please confirm once you receive the payment.',
+        '',
+        'Note: this payment is not verified automatically. It becomes confirmed',
+        'only after the admin checks GCash and confirms it here.',
+    ]);
+}
+
+/**
  * Builds the automatic payment inquiry for one seller.
  *
  * Only that seller's products and only that seller's subtotal appear, so a

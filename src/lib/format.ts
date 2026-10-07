@@ -52,3 +52,23 @@ export function humanizeStatus(status: string): string {
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
 }
+
+/**
+ * Compact relative age for notification feeds ("just now", "5m ago").
+ *
+ * MySQL timestamps arrive as "YYYY-MM-DD HH:MM:SS" (no zone); normalising to
+ * a T makes browsers treat them as local time, matching how formatDateTime
+ * already renders the same strings.
+ */
+export function timeAgo(value: string | Date): string {
+  const date =
+    typeof value === "string" ? new Date(value.replace(" ", "T")) : value;
+  if (Number.isNaN(date.getTime())) return "—";
+
+  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (seconds < 60) return "just now";
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+  if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
+  return formatDate(date);
+}

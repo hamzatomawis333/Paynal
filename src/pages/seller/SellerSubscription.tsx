@@ -3,6 +3,7 @@ import { Helmet } from "react-helmet-async";
 import { useNavigate } from "react-router-dom";
 import { SellerLayout } from "@/components/seller/SellerLayout";
 import { useSellerSubscription, useRequestSubscription, useStartAdminConversation } from "@/hooks/useSubscription";
+import SubscriptionPaymentPanel from "@/components/seller/SubscriptionPaymentPanel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -10,7 +11,8 @@ import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { StatusBadge } from "@/components/StatusBadge";
-import { formatDate } from "@/lib/format";
+import { SubscriptionCountdown } from "@/components/SubscriptionCountdown";
+import { formatDate, formatPrice } from "@/lib/format";
 import { toast } from "sonner";
 import { CreditCard, Clock, MessageCircle, Loader2, CalendarClock } from "lucide-react";
 
@@ -21,17 +23,24 @@ export default function SellerSubscription() {
   const startChat = useStartAdminConversation();
 
   const subscription = data?.subscription;
-
-  function getDaysRemaining(endDate: string) {
-    const end = new Date(endDate);
-    const now = new Date();
-    const diff = Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    return Math.max(0, diff);
-  }
+  const gcashNumber = data?.gcash_number ?? "";
+  // A live payment is anything while the request itself is still Pending.
+  const hasLivePayment =
+    subscription?.status === "Pending" &&
+    ["pending", "awaiting_confirmation", "rejected"].includes(subscription.payment_status);
+  // What the seller would pay next: the current platform price, except while
+  // a Pending/Active record exists, where the amount stored on that row is
+  // the one that matters (price changes only apply to new requests).
+  const platformPrice = Number(data?.subscription_price) || 299;
+  const price =
+    subscription?.payment_amount &&
+    (subscription.status === "Pending" || subscription.status === "Active")
+      ? Number(subscription.payment_amount)
+      : platformPrice;
 
   function handleRequestSubscription() {
     requestMutation.mutate(undefined, {
-      onSuccess: () => toast.success("Subscription request sent! Wait for admin approval."),
+      onSuccess: () => toast.success("Subscription started! Send the GCash payment below to activate it."),
       onError: (err) => toast.error(getErrorMessage(err, "Failed to request subscription")),
     });
   }
@@ -96,9 +105,9 @@ export default function SellerSubscription() {
                           </p>
                         </div>
                         <div>
-                          <p className="text-sm text-muted-foreground">Remaining</p>
+                          <p className="text-sm text-muted-foreground">Time Remaining</p>
                           <p className="mt-1 text-sm font-bold text-primary">
-                            {getDaysRemaining(subscription.end_date)} Days
+                            <SubscriptionCountdown endDate={subscription.end_date} />
                           </p>
                         </div>
                       </>
@@ -106,7 +115,7 @@ export default function SellerSubscription() {
 
                     <div>
                       <p className="text-sm text-muted-foreground">Price</p>
-                      <p className="mt-1 text-lg font-bold text-primary">₱299</p>
+                      <p className="mt-1 text-lg font-bold text-primary">{formatPrice(price)}</p>
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">Duration</p>
@@ -129,10 +138,24 @@ export default function SellerSubscription() {
                   </div>
                 )}
 
-                {subscription?.status === "Pending" && (
+                {subscription?.status === "Pending" && !hasLivePayment && (
                   <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
                     <p className="text-sm text-muted-foreground">
-                      Your subscription request is being reviewed by the admin. Please wait for approval.
+                      Your payment has been received. The admin is verifying it - your
+                      subscription activates as soon as they confirm.
+                    </p>
+                  </div>
+                )}
+
+                {hasLivePayment && subscription && gcashNumber && (
+                  <SubscriptionPaymentPanel subscription={subscription} gcashNumber={gcashNumber} />
+                )}
+
+                {hasLivePayment && subscription && !gcashNumber && (
+                  <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
+                    <p className="text-sm text-muted-foreground">
+                      Subscription payments are not configured yet. Please chat with the
+                      admin to arrange payment.
                     </p>
                   </div>
                 )}
@@ -152,7 +175,7 @@ export default function SellerSubscription() {
                     {requestMutation.isPending ? (
                       <><Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />Requesting...</>
                     ) : (
-                      <><CreditCard className="mr-2 h-4 w-4" aria-hidden="true" />Subscribe Now — ₱299</>
+                      <><CreditCard className="mr-2 h-4 w-4" aria-hidden="true" />Subscribe Now — {formatPrice(price)}</>
                     )}
                   </Button>
                 )}
@@ -181,12 +204,15 @@ export default function SellerSubscription() {
                 </CardHeader>
                 <CardContent>
                   <ol className="list-decimal space-y-2 pl-5 text-sm text-muted-foreground">
-                    <li>Click "Subscribe Now" to send a subscription request.</li>
-                    <li>Chat with Admin to arrange payment (GCash, Bank Transfer, etc.).</li>
-                    <li>Send your payment screenshot and reference number.</li>
-                    <li>Admin verifies and approves your subscription.</li>
-                    <li>Start selling products for 30 days!</li>
+                    <li>Click "Subscribe Now" to start your 30-day subscription.</li>
+                    <li>Send the payment via GCash to the number shown in the panel.</li>
+                    <li>Paste your GCash reference number and mark it as sent.</li>
+                    <li>The admin verifies the reference and confirms your payment.</li>
+                    <li>Your subscription activates and you can start selling!</li>
                   </ol>
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    Trouble with the transfer? Use Chat with Admin to sort it out.
+                  </p>
                 </CardContent>
               </Card>
             </div>

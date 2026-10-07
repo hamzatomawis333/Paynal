@@ -39,7 +39,7 @@ if ($method === 'GET') {
     respond(["subscriptions" => $subscriptions]);
 }
 
-// PUT: Approve, reject, or manage subscription
+// PUT: Reject or expire a subscription (approval = payments/subscription-confirm.php)
 if ($method === 'PUT') {
     $body = getBody();
     $subId = intval($body['id'] ?? 0);
@@ -59,20 +59,10 @@ if ($method === 'PUT') {
         respond(["error" => "Subscription not found"], 404);
     }
 
-    if ($action === 'approve') {
-        if ($sub['status'] !== 'Pending') {
-            respond(["error" => "Only pending subscriptions can be approved"], 400);
-        }
-
-        $startDate = date('Y-m-d');
-        $endDate = date('Y-m-d', strtotime('+30 days'));
-
-        $update = $conn->prepare("UPDATE seller_subscriptions SET status = 'Active', start_date = ?, end_date = ?, approved_by = ?, approved_at = NOW(), updated_at = NOW() WHERE id = ?");
-        $update->bind_param("ssii", $startDate, $endDate, $adminId, $subId);
-        $update->execute();
-
-        respond(["success" => true, "message" => "Subscription approved", "start_date" => $startDate, "end_date" => $endDate]);
-    }
+    // NOTE: there is deliberately no 'approve' action anymore. Approval now
+    // happens ONLY through payments/subscription-confirm.php, which verifies
+    // the GCash payment and activates the subscription in one transaction -
+    // the same way orders can only become 'confirmed' via payments/confirm.php.
 
     if ($action === 'reject') {
         if ($sub['status'] !== 'Pending') {
@@ -96,7 +86,43 @@ if ($method === 'PUT') {
         respond(["success" => true, "message" => "Subscription marked as expired"]);
     }
 
-    respond(["error" => "Invalid action. Use: approve, reject, or expire"], 400);
+    respond(["error" => "Invalid action. Use: reject or expire"], 400);
+}
+
+// DELETE: permanently remove a subscription record (storage cleanup).
+// Active plans are protected - expire first, then delete - so a paid
+// subscription can't be destroyed by a stray click.
+if ($method === 'DELETE') {
+    $body = getBody();
+    $subId = intval($body['id'] ?? 0);
+
+    if (!$subId) {
+        respond(["error" => "id required"], 400);
+    }
+
+    $stmt = $conn->prepare("SELECT status FROM seller_subscriptions WHERE id = ?");
+    $stmt->bind_param("i", $subId);
+    $stmt->execute();
+    $sub = $stmt->get_result()->fetch_assoc();
+
+    if (!$sub) {
+        respond(["error" => "Subscription not found"], 404);
+    }
+
+    if ($sub['status'] === 'Active') {
+        respond(["error" => "Active subscriptions can't be deleted - mark it as expired first, then delete"], 409);
+    }
+
+    // payment_events rows cascade via FK; clear the related notifications too.
+    $notes = $conn->prepare("DELETE FROM notifications WHERE type = 'subscription' AND related_id = ?");
+    $notes->bind_param("i", $subId);
+    $notes->execute();
+
+    $del = $conn->prepare("DELETE FROM seller_subscriptions WHERE id = ?");
+    $del->bind_param("i", $subId);
+    $del->execute();
+
+    respond(["success" => true, "message" => "Subscription deleted"]);
 }
 
 respond(["error" => "Method not allowed"], 405);

@@ -2,6 +2,7 @@ import { apiFetch } from "./api";
 import type {
   AdminCategory,
   AdminOrder,
+  AdminOrderBuyer,
   AdminOrderDetail,
   AdminPaymentMethod,
   AdminSeller,
@@ -99,10 +100,73 @@ export async function fetchAdminSubscriptions(status?: string) {
 
 export async function manageAdminSubscription(data: {
   id: number;
-  action: "approve" | "reject" | "expire";
+  action: "reject" | "expire";
   reason?: string;
 }) {
   return apiFetch<{ success: boolean; message: string }>("/admin/subscriptions.php", {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteAdminSubscription(id: number) {
+  return apiFetch<{ success: boolean; message: string }>("/admin/subscriptions.php", {
+    method: "DELETE",
+    body: JSON.stringify({ id }),
+  });
+}
+
+// Admin verifies the seller's GCash reference; confirming also activates the
+// subscription (+30 days) in the same transaction - the subscription world's
+// equivalent of the seller confirming a buyer's order payment.
+export async function confirmAdminSubscriptionPayment(data: {
+  subscription_id: number;
+  note?: string;
+}) {
+  return apiFetch<{
+    success: boolean;
+    status: string;
+    subscription_status: string;
+    start_date: string;
+    end_date: string;
+    already_confirmed?: boolean;
+  }>("/payments/subscription-confirm.php", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function rejectAdminSubscriptionPayment(data: {
+  subscription_id: number;
+  reason_code: string;
+  reason: string;
+}) {
+  return apiFetch<{
+    success: boolean;
+    status: string;
+    rejection_reason: string;
+    already_rejected?: boolean;
+  }>("/payments/subscription-reject.php", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+// ==================== PLATFORM SETTINGS ====================
+export interface PlatformSettings {
+  gcash_number: string;
+  subscription_price: string;
+}
+
+export async function fetchPlatformSettings() {
+  return apiFetch<{ settings: PlatformSettings }>("/admin/settings.php");
+}
+
+export async function updatePlatformSettings(data: {
+  gcash_number?: string;
+  subscription_price?: string;
+}) {
+  return apiFetch<{ success: boolean; settings: PlatformSettings }>("/admin/settings.php", {
     method: "PUT",
     body: JSON.stringify(data),
   });
@@ -125,12 +189,19 @@ export async function fetchAdminReports() {
 }
 
 // ==================== ORDERS ====================
-export async function fetchAdminOrders(filters?: { status?: string; search?: string }) {
+export async function fetchAdminOrders(filters?: {
+  status?: string;
+  search?: string;
+  buyerId?: string;
+}) {
   const params = new URLSearchParams();
   if (filters?.status && filters.status !== "all") params.set("status", filters.status);
   if (filters?.search && filters.search.trim() !== "") params.set("search", filters.search.trim());
+  if (filters?.buyerId && filters.buyerId !== "all") params.set("buyer", filters.buyerId);
   const qs = params.toString();
-  return apiFetch<{ orders: AdminOrder[] }>(`/admin/orders.php${qs ? `?${qs}` : ""}`);
+  return apiFetch<{ orders: AdminOrder[]; buyers: AdminOrderBuyer[] }>(
+    `/admin/orders.php${qs ? `?${qs}` : ""}`
+  );
 }
 
 export async function fetchAdminOrderDetail(orderId: number) {

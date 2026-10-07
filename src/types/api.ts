@@ -136,12 +136,24 @@ export interface AdminPaymentMethod {
 
 export type SubscriptionStatus = "Pending" | "Active" | "Expired" | "Rejected";
 
+export type SubscriptionPaymentStatus =
+  | "pending"
+  | "awaiting_confirmation"
+  | "completed"
+  | "rejected";
+
 export interface AdminSubscription {
   id: ApiId;
   seller_id: ApiId;
   start_date: string | null;
   end_date: string | null;
   status: SubscriptionStatus;
+  // GCash payment for this subscription (mirrors the buyer checkout flow)
+  payment_status: SubscriptionPaymentStatus;
+  payment_amount: string;
+  transaction_reference: string | null;
+  payment_rejection_reason: string | null;
+  paid_at: string | null;
   approved_by: ApiId | null;
   approved_at: string | null;
   rejection_reason: string | null;
@@ -165,10 +177,23 @@ export interface AdminOrder {
   payment_status: string;
   created_at: string;
   // joined from users
+  buyer_id: ApiId;
   buyer_name: string;
   buyer_email: string;
   /** COUNT(*) subquery -> string; use Number(x) before comparing */
   item_count: ApiId;
+}
+
+/** A buyer account with its order stats - the /admin/orders landing list */
+export interface AdminOrderBuyer {
+  id: ApiId;
+  full_name: string;
+  email: string;
+  avatar_url: string | null;
+  /** COUNT(*) via LEFT JOIN -> string; 0 for buyers with no orders */
+  order_count: ApiId;
+  /** MAX(created_at) -> string | null */
+  last_order_at: string | null;
 }
 
 export interface AdminOrderPayment {

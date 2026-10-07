@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { ColorPicker } from "@/components/ui/ColorPicker";
+import { NotificationBell } from "@/components/NotificationBell";
 import { useCart } from "@/context/CartContext";
 import {
   ShoppingCart, Menu, X, User, Search, Store, LogOut, Shield,
@@ -170,6 +171,8 @@ export function Navbar() {
               </Button>
             </form>
 
+            {loggedIn && <NotificationBell />}
+
             <Link to="/cart">
               <Button variant="ghost" size="icon" className="relative" aria-label={`Cart, ${totalItems} item(s)`}>
                 <ShoppingCart className="h-5 w-5" aria-hidden="true" />
@@ -239,6 +242,7 @@ export function Navbar() {
                 </Button>
               </form>
               <div className="flex items-center gap-2 px-4 py-2">
+                {loggedIn && <NotificationBell />}
                 <ThemeToggle />
                 <ColorPicker />
               </div>

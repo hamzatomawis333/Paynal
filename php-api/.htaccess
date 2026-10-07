@@ -25,6 +25,17 @@ RewriteRule ^payments/mark-sent$ payments/mark-sent.php [L,QSA]
 RewriteRule ^payments/confirm$ payments/confirm.php [L,QSA]
 RewriteRule ^payments/reject$ payments/reject.php [L,QSA]
 
+# Subscription GCash payment routes (same workflow, admin verifies)
+RewriteRule ^payments/subscription-mark-sent$ payments/subscription-mark-sent.php [L,QSA]
+RewriteRule ^payments/subscription-confirm$ payments/subscription-confirm.php [L,QSA]
+RewriteRule ^payments/subscription-reject$ payments/subscription-reject.php [L,QSA]
+
+# Platform settings (admin)
+RewriteRule ^admin/settings$ admin/settings.php [L,QSA]
+
+# In-app notifications (any authenticated user)
+RewriteRule ^notifications$ notifications.php [L,QSA]
+
 # Reviews routes
 RewriteRule ^reviews$ reviews/index.php [L,QSA]
 

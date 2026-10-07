@@ -6,6 +6,7 @@ import { logoutUser, getStoredUser, type ApiUser } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { ColorPicker } from "@/components/ui/ColorPicker";
+import { NotificationBell } from "@/components/NotificationBell";
 import { ChevronLeft, LogOut, Menu, X, type LucideIcon } from "lucide-react";
 
 export interface NavItem {
@@ -242,6 +243,7 @@ export function DashboardLayout({
             {headerLabel}
           </p>
           <div className="flex-1" />
+          <NotificationBell enabled={!!user} />
           <ThemeToggle />
           <ColorPicker />
         </header>

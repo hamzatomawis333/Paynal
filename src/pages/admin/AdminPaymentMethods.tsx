@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { AdminLayout } from "@/components/admin/AdminLayout";
-import { useAdminPaymentMethods } from "@/hooks/useAdmin";
+import { useAdminPaymentMethods, usePlatformSettings } from "@/hooks/useAdmin";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,8 +16,9 @@ import { ErrorState } from "@/components/ErrorState";
 import { TableSkeleton } from "@/components/LoadingSkeleton";
 import { StatusBadge } from "@/components/StatusBadge";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, CreditCard, Wallet, Building2, Globe, Banknote } from "lucide-react";
+import { Plus, Pencil, Trash2, CreditCard, Wallet, Building2, Globe, Banknote, Smartphone } from "lucide-react";
 import { getErrorMessage } from "@/lib/errors";
+import { formatPrice } from "@/lib/format";
 import type { AdminPaymentMethod } from "@/types/api";
 
 const iconMap: Record<string, React.ElementType> = {
@@ -41,6 +42,26 @@ const AdminPaymentMethods = () => {
     data: methods, isLoading, isError, refetch,
     createMethod, updateMethod, deleteMethod,
   } = useAdminPaymentMethods();
+  const platformSettings = usePlatformSettings();
+  const [gcashNumber, setGcashNumber] = useState("");
+  const [savingGcash, setSavingGcash] = useState(false);
+
+  useEffect(() => {
+    if (platformSettings.data) setGcashNumber(platformSettings.data.gcash_number || "");
+  }, [platformSettings.data]);
+
+  const saveGcashNumber = () => {
+    setSavingGcash(true);
+    platformSettings.updateSettings.mutate(
+      { gcash_number: gcashNumber.trim() },
+      {
+        onSuccess: () => toast.success("Platform GCash number saved"),
+        onError: (err) => toast.error(getErrorMessage(err, "Failed to save GCash number")),
+        onSettled: () => setSavingGcash(false),
+      }
+    );
+  };
+
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<AdminPaymentMethod | null>(null);
   const [form, setForm] = useState({ name: "", code: "", description: "", icon: "", is_active: 1, sort_order: 0 });
@@ -256,6 +277,45 @@ const AdminPaymentMethods = () => {
             </CardContent>
           </Card>
         </div>
+
+        {/* Platform GCash number - where sellers send subscription payments */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Platform GCash Number</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Sellers send their {formatPrice(Number(platformSettings.data?.subscription_price) || 299)} subscription
+              payment to this number. It is shown on the seller's subscription page, and you verify
+              the reference against this account's GCash history.
+            </p>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <div className="flex-1 space-y-2">
+                <Label htmlFor="platform-gcash">GCash Number</Label>
+                <Input
+                  id="platform-gcash"
+                  inputMode="numeric"
+                  value={gcashNumber}
+                  onChange={(e) => setGcashNumber(e.target.value)}
+                  placeholder="e.g. 09171234567"
+                  maxLength={15}
+                />
+              </div>
+              <Button
+                onClick={saveGcashNumber}
+                disabled={savingGcash || platformSettings.updateSettings.isPending}
+              >
+                <Smartphone className="mr-2 h-4 w-4" aria-hidden="true" />
+                {savingGcash || platformSettings.updateSettings.isPending ? "Saving..." : "Save Number"}
+              </Button>
+            </div>
+            {!gcashNumber.trim() && !platformSettings.isLoading && (
+              <p className="text-sm text-destructive">
+                Not configured - sellers cannot start a subscription payment until a number is saved.
+              </p>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Table */}
         <Card>

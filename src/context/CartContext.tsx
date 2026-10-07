@@ -1,6 +1,29 @@
-import React, { createContext, useContext, useState, ReactNode } from "react";
+import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { CartItem, Product } from "@/types/product";
 import { toast } from "sonner";
+
+const CART_ITEMS_KEY = "maranao_cart_items";
+const CART_SELECTED_KEY = "maranao_cart_selected";
+
+/** Reads a JSON list from localStorage, falling back to [] on missing/corrupt data. */
+function readStored<T>(key: string): T[] {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as T[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeStored(key: string, value: unknown) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Storage full or unavailable - the cart still works for this session.
+  }
+}
 
 interface CartContextType {
   items: CartItem[];
@@ -27,8 +50,10 @@ interface CartContextType {
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
 export function CartProvider({ children }: { children: ReactNode }) {
-  const [items, setItems] = useState<CartItem[]>([]);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [items, setItems] = useState<CartItem[]>(() => readStored<CartItem>(CART_ITEMS_KEY));
+  const [selectedIds, setSelectedIds] = useState<string[]>(() =>
+    readStored<string>(CART_SELECTED_KEY)
+  );
 
   // A selection can only ever contain ids that are still in the cart, so
   // removing a product cannot leave a dangling checkbox behind.
@@ -36,6 +61,25 @@ export function CartProvider({ children }: { children: ReactNode }) {
     const present = new Set(cart.map((i) => i.id));
     return selection.filter((id) => present.has(id));
   };
+
+  // Hydration can leave a selection pointing at products that were removed in
+  // a previous session, so prune it once against the restored cart.
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      const pruned = pruneSelection(items, prev);
+      return pruned.length === prev.length ? prev : pruned;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist across refreshes: without this the cart resets to empty every reload.
+  useEffect(() => {
+    writeStored(CART_ITEMS_KEY, items);
+  }, [items]);
+
+  useEffect(() => {
+    writeStored(CART_SELECTED_KEY, selectedIds);
+  }, [selectedIds]);
 
   const addToCart = (product: Product) => {
     setItems((prev) => {

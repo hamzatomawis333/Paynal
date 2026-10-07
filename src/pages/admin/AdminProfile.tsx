@@ -1,8 +1,14 @@
 import { getErrorMessage } from "@/lib/errors";
+import { formatPrice } from "@/lib/format";
 import { useState, useEffect } from "react";
 import { Helmet } from "react-helmet-async";
 import { AdminLayout } from "@/components/admin/AdminLayout";
-import { useAdminProfile, useUpdateAdminProfile, useChangeAdminPassword } from "@/hooks/useAdmin";
+import {
+  useAdminProfile,
+  useUpdateAdminProfile,
+  useChangeAdminPassword,
+  usePlatformSettings,
+} from "@/hooks/useAdmin";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,16 +18,18 @@ import { PageHeader } from "@/components/PageHeader";
 import { ErrorState } from "@/components/ErrorState";
 import { ProfileHeader } from "@/components/ProfileHeader";
 import { toast } from "sonner";
-import { User, Lock } from "lucide-react";
+import { User, Lock, Wallet } from "lucide-react";
 
 export default function AdminProfile() {
   const { data: profile, isLoading, isError, refetch } = useAdminProfile();
   const updateProfile = useUpdateAdminProfile();
   const changePassword = useChangeAdminPassword();
+  const platformSettings = usePlatformSettings();
 
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
+  const [gcashNumber, setGcashNumber] = useState("");
 
   const [currentPw, setCurrentPw] = useState("");
   const [newPw, setNewPw] = useState("");
@@ -34,6 +42,12 @@ export default function AdminProfile() {
       setAddress(profile.address || "");
     }
   }, [profile]);
+
+  useEffect(() => {
+    if (platformSettings.data) {
+      setGcashNumber(platformSettings.data.gcash_number || "");
+    }
+  }, [platformSettings.data]);
 
   const resetForm = () => {
     setFullName(profile?.full_name || "");
@@ -72,6 +86,16 @@ export default function AdminProfile() {
           setConfirmPw("");
         },
         onError: (err) => toast.error(getErrorMessage(err, "Failed to change password")),
+      }
+    );
+  };
+
+  const saveGcashNumber = () => {
+    platformSettings.updateSettings.mutate(
+      { gcash_number: gcashNumber.trim() },
+      {
+        onSuccess: () => toast.success("Platform GCash number saved"),
+        onError: (err) => toast.error(getErrorMessage(err, "Failed to save GCash number")),
       }
     );
   };
@@ -183,6 +207,48 @@ export default function AdminProfile() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Where sellers send their ₱299 subscription payments. Same value as
+            Admin > Payment Methods; kept here so "my profile" is the one place
+            an admin configures money destinations. */}
+        <Card className="shadow-soft">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 font-display text-lg">
+              <Wallet className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
+              Platform GCash Number
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <div className="flex-1 space-y-2">
+                <Label htmlFor="profile-platform-gcash">GCash Number</Label>
+                <Input
+                  id="profile-platform-gcash"
+                  inputMode="numeric"
+                  value={gcashNumber}
+                  onChange={(e) => setGcashNumber(e.target.value)}
+                  placeholder="09XX XXX XXXX"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Sellers send their {formatPrice(Number(platformSettings.data?.subscription_price) || 299)} subscription
+                  payment to this number. It is shown to them on the Subscription page and in their payment instructions.
+                </p>
+              </div>
+              <Button
+                variant="gold"
+                onClick={saveGcashNumber}
+                disabled={platformSettings.updateSettings.isPending}
+              >
+                {platformSettings.updateSettings.isPending ? "Saving..." : "Save Number"}
+              </Button>
+            </div>
+            {!gcashNumber.trim() && !platformSettings.isLoading && (
+              <p className="mt-3 rounded-lg bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
+                No number set yet - sellers cannot start a subscription payment until one is saved.
+              </p>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </AdminLayout>
   );

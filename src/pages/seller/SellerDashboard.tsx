@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { StatusBadge } from "@/components/StatusBadge";
+import { SubscriptionCountdown } from "@/components/SubscriptionCountdown";
 import { formatPrice, formatDate } from "@/lib/format";
 import { Package, ShoppingCart, TrendingUp, Clock, CreditCard, MessageCircle, Loader2, CheckCircle, Inbox, Wallet } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -49,12 +50,6 @@ export default function SellerDashboard() {
       bg: "bg-emerald-500/10",
     },
   ];
-
-  function getDaysRemaining(endDate: string) {
-    const end = new Date(endDate);
-    const now = new Date();
-    return Math.max(0, Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
-  }
 
   function handleChatAdmin() {
     startChat.mutate(undefined, {
@@ -98,9 +93,9 @@ export default function SellerDashboard() {
                             </span>
                           </div>
                           <div className="flex items-center gap-2 text-sm">
-                            <span className="text-muted-foreground">Remaining:</span>
+                            <span className="text-muted-foreground">Time Remaining:</span>
                             <span className="font-bold text-primary">
-                              {getDaysRemaining(subscription.end_date)} Days
+                              <SubscriptionCountdown endDate={subscription.end_date} />
                             </span>
                           </div>
                         </>
@@ -114,7 +109,9 @@ export default function SellerDashboard() {
                       )}
                       {subscription.status === "Pending" && (
                         <p className="text-sm text-muted-foreground">
-                          Your request is being reviewed. Please wait.
+                          {subscription.payment_status === "awaiting_confirmation"
+                            ? "Payment sent - waiting for the admin to verify it."
+                            : "Complete your GCash payment to activate your subscription."}
                         </p>
                       )}
                     </div>
@@ -127,7 +124,7 @@ export default function SellerDashboard() {
                 <div className="flex flex-col gap-2">
                   {(!subscription || subscription.status === "Expired" || subscription.status === "Rejected") && (
                     <Button variant="gold" size="sm" onClick={() => navigate("/seller/subscription")}>
-                      Subscribe — ₱299
+                      Subscribe — {formatPrice(Number(subData?.subscription_price) || 299)}
                     </Button>
                   )}
                   {subscription?.status === "Active" && (

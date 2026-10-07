@@ -79,6 +79,18 @@ const subscriptionStatus: Record<string, StatusEntry> = {
   Rejected: { label: "Rejected", tone: "red" },
 };
 
+/**
+ * Subscription payment as the ADMIN reads it (their verification is pending).
+ * Kept separate from the buyer/seller order-payment maps because neither of
+ * those wordings fits: the payer here is a seller and the verifier is admin.
+ */
+const subscriptionPaymentStatus: Record<string, StatusEntry> = {
+  pending: { label: "Not sent yet", tone: "amber" },
+  awaiting_confirmation: { label: "Awaiting verification", tone: "blue" },
+  completed: { label: "Paid", tone: "green" },
+  rejected: { label: "Payment rejected", tone: "red" },
+};
+
 const activeStatus: Record<string, StatusEntry> = {
   active: { label: "Active", tone: "green" },
   inactive: { label: "Inactive", tone: "slate" },
@@ -88,6 +100,7 @@ export type StatusKind =
   | "order"
   | "payment"
   | "subscription"
+  | "subscription-payment"
   | "active";
 
 interface StatusBadgeProps {
@@ -116,7 +129,9 @@ export function StatusBadge({
           : paymentStatusBuyer
         : kind === "subscription"
           ? subscriptionStatus
-          : activeStatus;
+          : kind === "subscription-payment"
+            ? subscriptionPaymentStatus
+            : activeStatus;
 
   const entry = table[status];
 
@@ -150,7 +165,9 @@ export function statusTone(status: string, kind: StatusKind): string {
         ? paymentStatusBuyer
         : kind === "subscription"
           ? subscriptionStatus
-          : activeStatus;
+          : kind === "subscription-payment"
+            ? subscriptionPaymentStatus
+            : activeStatus;
   const entry = table[status];
   return entry ? toneClass[entry.tone] : "";
 }

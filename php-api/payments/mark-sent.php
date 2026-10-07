@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/gcash-workflow.php';
+require_once __DIR__ . '/../notifications-lib.php';
 
 // POST - buyer marks one of their GCash payments as "sent".
 //
@@ -141,6 +142,23 @@ try {
         }
         postSystemMessage($conn, $convId, $userId, $msg);
     }
+
+    // The seller's "did the buyer actually pay?" check used to start at
+    // manually opening the order. Ping them with the reference so verification
+    // can happen from the bell. Inside the transaction: rolls back with it.
+    notifyUser(
+        $conn,
+        (int) $payment['seller_id'],
+        'payment',
+        'Buyer submitted a GCash reference',
+        'Order ' . $payment['order_number'] . ' - '
+            . gcash_money((float) $payment['amount'])
+            . ' claimed as paid. Reference: ' . $reference
+            . ($wasRejected ? ' (resubmitted after rejection)' : '')
+            . '. Verify it in your Orders list.',
+        '/seller/orders',
+        $paymentId
+    );
 
     $conn->commit();
 } catch (Exception $e) {

@@ -106,7 +106,11 @@ export default function SellerProducts() {
                       You need an active subscription to add, edit, or publish products.
                     </p>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      Price: <span className="font-bold text-primary">₱299</span> for 30 days
+                      Price:{" "}
+                      <span className="font-bold text-primary">
+                        {formatPrice(Number(subData?.subscription_price) || 299)}
+                      </span>{" "}
+                      for 30 days
                     </p>
                   </div>
                 </div>

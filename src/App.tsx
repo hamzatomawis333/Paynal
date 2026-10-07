@@ -36,6 +36,7 @@ import AdminUsers from "./pages/admin/AdminUsers";
 import AdminCategories from "./pages/admin/AdminCategories";
 import AdminReports from "./pages/admin/AdminReports";
 import AdminOrders from "./pages/admin/AdminOrders";
+import AdminBuyerOrders from "./pages/admin/AdminBuyerOrders";
 import AdminOrderDetail from "./pages/admin/AdminOrderDetail";
 import AdminSellers from "./pages/admin/AdminSellers";
 import AdminSellerDetail from "./pages/admin/AdminSellerDetail";
@@ -94,6 +95,7 @@ const App = () => (
                 <Route path="/admin/categories" element={<AdminCategories />} />
                 <Route path="/admin/payment-methods" element={<AdminPaymentMethods />} />
                 <Route path="/admin/orders" element={<AdminOrders />} />
+                <Route path="/admin/orders/buyer/:buyerId" element={<AdminBuyerOrders />} />
                 <Route path="/admin/orders/:id" element={<AdminOrderDetail />} />
                 <Route path="/admin/sellers" element={<AdminSellers />} />
                 <Route path="/admin/sellers/:id" element={<AdminSellerDetail />} />

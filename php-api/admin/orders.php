@@ -52,11 +52,12 @@ if ($orderId) {
 }
 
 // ============================================
-// GET /admin/orders.php?status=...&search=...
-// List all orders, newest first. Both filters are optional.
+// GET /admin/orders.php?status=...&search=...&buyer=N
+// List all orders, newest first. All filters are optional.
 // ============================================
 $status = trim((string) ($_GET['status'] ?? ''));
 $search = trim((string) ($_GET['search'] ?? ''));
+$buyerId = intval($_GET['buyer'] ?? 0);
 
 if ($status !== '' && !in_array($status, ORDER_STATUSES, true)) {
     respond(["error" => "Invalid status filter"], 400);
@@ -74,6 +75,11 @@ if ($status !== '') {
     $params[] = $status;
     $types .= "s";
 }
+if ($buyerId > 0) {
+    $where[] = "o.user_id = ?";
+    $params[] = $buyerId;
+    $types .= "i";
+}
 if ($search !== '') {
     $where[] = "(o.order_number LIKE ? OR u.full_name LIKE ? OR u.email LIKE ?)";
     $like = '%' . $search . '%';
@@ -84,7 +90,7 @@ if ($search !== '') {
 }
 
 $sql = "SELECT o.id, o.order_number, o.total_amount, o.shipping_fee, o.status, o.payment_method,
-               o.payment_status, o.created_at,
+               o.payment_status, o.created_at, o.user_id AS buyer_id,
                u.full_name AS buyer_name, u.email AS buyer_email,
                (SELECT COUNT(*) FROM order_items oi WHERE oi.order_id = o.id) AS item_count
         FROM orders o JOIN users u ON o.user_id = u.id";
@@ -100,4 +106,20 @@ if ($params) {
 $stmt->execute();
 $orders = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
-respond(["orders" => $orders]);
+// Every buyer account (the /admin/orders landing page lists accounts first,
+// then drills into one buyer's orders). ORDER BY is deterministic via the
+// GROUP BY columns, and buyers with zero orders still appear (count 0).
+$buyers = [];
+$buyerRows = $conn->query(
+    "SELECT u.id, u.full_name, u.email, u.avatar_url,
+            COUNT(o.id) AS order_count, MAX(o.created_at) AS last_order_at
+     FROM users u LEFT JOIN orders o ON o.user_id = u.id
+     WHERE u.role = 'buyer'
+     GROUP BY u.id, u.full_name, u.email, u.avatar_url
+     ORDER BY u.full_name ASC"
+);
+if ($buyerRows) {
+    $buyers = $buyerRows->fetch_all(MYSQLI_ASSOC);
+}
+
+respond(["orders" => $orders, "buyers" => $buyers]);

@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../payments/gcash-workflow.php';
+require_once __DIR__ . '/../notifications-lib.php';
 
 $auth = verifyToken();
 $userId = (int)$auth['user_id'];
@@ -352,6 +353,20 @@ if ($existing) {
                     $group['subtotal'],
                     $group['shipping_share']
                 )
+            );
+
+            // The seller used to learn about the order only by refreshing the
+            // orders list or opening the chat. Inside the transaction, so it
+            // rolls back with the order if anything later fails.
+            notifyUser(
+                $conn,
+                (int) $sellerId,
+                'order',
+                'New order ' . $orderNumber,
+                gcash_money($group['amount']) . ' awaiting GCash payment. '
+                    . 'Payment instructions were sent in your conversation with the buyer.',
+                '/seller/orders',
+                $orderId
             );
 
             $groups[] = [

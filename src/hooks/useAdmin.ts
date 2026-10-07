@@ -3,7 +3,9 @@ import {
   fetchAdminUsers, updateAdminUser, deleteAdminUser,
   fetchAdminCategories, createAdminCategory, updateAdminCategory, deleteAdminCategory,
   fetchAdminPaymentMethods, createAdminPaymentMethod, updateAdminPaymentMethod, deleteAdminPaymentMethod,
-  fetchAdminSubscriptions, manageAdminSubscription,
+  fetchAdminSubscriptions, manageAdminSubscription, deleteAdminSubscription,
+  confirmAdminSubscriptionPayment, rejectAdminSubscriptionPayment,
+  fetchPlatformSettings, updatePlatformSettings,
   fetchAdminReports,
   fetchAdminOrders, fetchAdminOrderDetail,
   fetchAdminSellers, fetchAdminSellerDetail,
@@ -75,10 +77,10 @@ export function useAdminReports() {
   return useQuery({ queryKey: ["admin-reports"], queryFn: fetchAdminReports });
 }
 
-export function useAdminOrders(filters?: { status?: string; search?: string }) {
+export function useAdminOrders(filters?: { status?: string; search?: string; buyerId?: string }) {
   return useQuery({
-    queryKey: ["admin-orders", filters?.status ?? "all", filters?.search ?? ""],
-    queryFn: async () => (await fetchAdminOrders(filters)).orders,
+    queryKey: ["admin-orders", filters?.status ?? "all", filters?.search ?? "", filters?.buyerId ?? "all"],
+    queryFn: async () => await fetchAdminOrders(filters),
   });
 }
 
@@ -112,14 +114,52 @@ export function useAdminSubscriptions(status?: string) {
     queryFn: async () => (await fetchAdminSubscriptions(status)).subscriptions,
   });
 
+  const refresh = () => qc.invalidateQueries({ queryKey: ["admin-subscriptions"] });
+
   const manageMutation = useMutation({
     mutationFn: manageAdminSubscription,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["admin-subscriptions"] });
-    },
+    onSuccess: refresh,
   });
 
-  return { ...query, manageSubscription: manageMutation };
+  const deleteMutation = useMutation({
+    mutationFn: deleteAdminSubscription,
+    onSuccess: refresh,
+  });
+
+  // Confirming the GCash payment also activates the subscription, so both
+  // mutations refresh the same list.
+  const confirmPaymentMutation = useMutation({
+    mutationFn: confirmAdminSubscriptionPayment,
+    onSuccess: refresh,
+  });
+
+  const rejectPaymentMutation = useMutation({
+    mutationFn: rejectAdminSubscriptionPayment,
+    onSuccess: refresh,
+  });
+
+  return {
+    ...query,
+    manageSubscription: manageMutation,
+    deleteSubscription: deleteMutation,
+    confirmPayment: confirmPaymentMutation,
+    rejectPayment: rejectPaymentMutation,
+  };
+}
+
+export function usePlatformSettings() {
+  const qc = useQueryClient();
+  const query = useQuery({
+    queryKey: ["platform-settings"],
+    queryFn: async () => (await fetchPlatformSettings()).settings,
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: updatePlatformSettings,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["platform-settings"] }),
+  });
+
+  return { ...query, updateSettings: updateMutation };
 }
 
 export function useAdminProfile() {
