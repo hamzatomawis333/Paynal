@@ -1,0 +1,232 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Maranao-inspired color palette */
+    --background: 35 30% 97%;
+    --foreground: 25 30% 12%;
+
+    --card: 35 25% 95%;
+    --card-foreground: 25 30% 12%;
+
+    --popover: 35 30% 97%;
+    --popover-foreground: 25 30% 12%;
+
+    /* Deep gold/brass - Maranao brasswork */
+    --primary: 42 65% 55%;
+    --primary-foreground: 25 30% 8%;
+
+    /* Warm cream secondary */
+    --secondary: 35 25% 90%;
+    --secondary-foreground: 25 30% 15%;
+
+    /* Muted earthy tones */
+    --muted: 35 20% 92%;
+    --muted-foreground: 25 15% 45%;
+
+    /* Teal accent - Lake Lanao */
+    --accent: 175 45% 35%;
+    --accent-foreground: 0 0% 98%;
+
+    /* Deep burgundy for destructive/alerts */
+    --destructive: 0 65% 45%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 35 20% 85%;
+    --input: 35 20% 88%;
+    --ring: 42 65% 55%;
+
+    --radius: 0.75rem;
+
+    /* Custom design tokens */
+    --gold: 42 65% 55%;
+    --gold-light: 42 60% 70%;
+    --gold-dark: 42 70% 40%;
+    --teal: 175 45% 35%;
+    --teal-light: 175 40% 50%;
+    --burgundy: 350 60% 35%;
+    --burgundy-light: 350 55% 50%;
+    --cream: 35 30% 97%;
+    --warm-gray: 25 15% 45%;
+
+    /* Gradients */
+    --gradient-gold: linear-gradient(135deg, hsl(42 65% 55%), hsl(42 70% 40%));
+    --gradient-teal: linear-gradient(135deg, hsl(175 45% 35%), hsl(175 50% 25%));
+    --gradient-hero: linear-gradient(180deg, hsl(35 30% 97%) 0%, hsl(35 25% 92%) 100%);
+    --gradient-card: linear-gradient(145deg, hsl(35 25% 95%), hsl(35 30% 98%));
+
+    /* Shadows */
+    --shadow-soft: 0 4px 20px -4px hsl(25 30% 12% / 0.08);
+    --shadow-medium: 0 8px 30px -8px hsl(25 30% 12% / 0.12);
+    --shadow-gold: 0 8px 25px -5px hsl(42 65% 55% / 0.25);
+
+    --sidebar-background: 35 25% 95%;
+    --sidebar-foreground: 25 30% 12%;
+    --sidebar-primary: 42 65% 55%;
+    --sidebar-primary-foreground: 25 30% 8%;
+    --sidebar-accent: 175 45% 35%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 35 20% 85%;
+    --sidebar-ring: 42 65% 55%;
+  }
+
+  .dark {
+    --background: 25 25% 8%;
+    --foreground: 35 20% 95%;
+
+    --card: 25 22% 12%;
+    --card-foreground: 35 20% 95%;
+
+    --popover: 25 22% 10%;
+    --popover-foreground: 35 20% 95%;
+
+    --primary: 42 60% 55%;
+    --primary-foreground: 25 30% 8%;
+
+    --secondary: 25 20% 18%;
+    --secondary-foreground: 35 20% 90%;
+
+    --muted: 25 18% 20%;
+    --muted-foreground: 35 15% 60%;
+
+    --accent: 175 40% 45%;
+    --accent-foreground: 0 0% 98%;
+
+    --destructive: 0 60% 50%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 25 18% 22%;
+    --input: 25 18% 22%;
+    --ring: 42 60% 55%;
+
+    --sidebar-background: 25 22% 10%;
+    --sidebar-foreground: 35 20% 95%;
+    --sidebar-primary: 42 60% 55%;
+    --sidebar-primary-foreground: 25 30% 8%;
+    --sidebar-accent: 175 40% 45%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 25 18% 22%;
+    --sidebar-ring: 42 60% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display;
+  }
+}
+
+@layer utilities {
+  .text-gradient-gold {
+    @apply bg-clip-text text-transparent;
+    background-image: var(--gradient-gold);
+  }
+
+  .bg-gradient-gold {
+    background-image: var(--gradient-gold);
+  }
+
+  .bg-gradient-teal {
+    background-image: var(--gradient-teal);
+  }
+
+  .bg-gradient-hero {
+    background-image: var(--gradient-hero);
+  }
+
+  .shadow-soft {
+    box-shadow: var(--shadow-soft);
+  }
+
+  .shadow-medium {
+    box-shadow: var(--shadow-medium);
+  }
+
+  .shadow-gold {
+    box-shadow: var(--shadow-gold);
+  }
+
+  /* Okir-inspired decorative pattern */
+  .okir-pattern {
+    background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M30 5C35 10 40 15 35 25C30 35 25 30 20 35C15 40 20 45 15 50' stroke='%23d4a85320' fill='none' stroke-width='1.5'/%3E%3C/svg%3E");
+  }
+
+  .animate-float {
+    animation: float 6s ease-in-out infinite;
+  }
+
+  .animate-fade-up {
+    animation: fadeUp 0.6s ease-out forwards;
+  }
+
+  .animate-fade-in {
+    animation: fadeIn 0.5s ease-out forwards;
+  }
+
+  .animate-scale-in {
+    animation: scaleIn 0.4s ease-out forwards;
+  }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(var(--muted));
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--primary) / 0.5);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--primary) / 0.7);
+}

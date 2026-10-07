@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- TODO: Set the document title to the name of your application -->
+    <title>Lanao Craft</title>
+    <meta name="description" content="gya tot ka">
+    <meta name="author" content="" />
+
+    <!-- TODO: Update og:title to match your application name -->
+    
+    
+    <meta property="og:type" content="website" />
+  
+
+    <meta name="twitter:card" content="summary_large_image" />
+
+
+    <meta property="og:title" content="">
+  <meta property="og:description" content="gya tot ka">
+  <meta name="twitter:description" content="gya tot ka">
+</head>
+
+  <body>
+    <script>
+      try {
+        if (localStorage.getItem('maranao_theme_dark') === 'true') {
+          document.documentElement.classList.add('dark');
+        }
+        var accent = localStorage.getItem('maranao_accent_color');
+        if (accent) {
+          function hexToHsl(h) {
+            h = h.replace('#','');
+            var r = parseInt(h.substring(0,2),16)/255, g = parseInt(h.substring(2,4),16)/255, b = parseInt(h.substring(4,6),16)/255;
+            var mx = Math.max(r,g,b), mn = Math.min(r,g,b), s=0, l=(mx+mn)/2, hd=0;
+            if(mx!==mn){var d=mx-mn;s=l>0.5?d/(2-mx-mn):d/(mx+mn);if(mx===r)hd=((g-b)/d+(g<b?6:0))/6;else if(mx===g)hd=((b-r)/d+2)/6;else hd=((r-g)/d+4)/6;}
+            return Math.round(hd*360)+' '+Math.round(s*100)+'% '+Math.round(l*100)+'%';
+          }
+          var hsl = hexToHsl(accent);
+          document.documentElement.style.setProperty('--primary', hsl);
+          document.documentElement.style.setProperty('--ring', hsl);
+          document.documentElement.style.setProperty('--gold', hsl);
+          var lp = hsl.split(' ');
+          var lt = parseInt(lp[2]);
+          document.documentElement.style.setProperty('--primary-foreground', lt > 55 ? '25 30% 8%' : '0 0% 98%');
+        }
+      } catch(e) {}
+    </script>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

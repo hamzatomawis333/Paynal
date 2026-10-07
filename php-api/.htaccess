@@ -1,0 +1,32 @@
+RewriteEngine On
+
+SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
+
+# Auth routes
+RewriteRule ^auth/register$ auth/register.php [L,QSA]
+RewriteRule ^auth/login$ auth/login.php [L,QSA]
+RewriteRule ^auth/me$ auth/me.php [L,QSA]
+
+# Products routes
+RewriteRule ^products$ products/index.php [L,QSA]
+RewriteRule ^products/(\d+)$ products/show.php?id=$1 [L,QSA]
+RewriteRule ^categories$ products/categories.php [L,QSA]
+
+# Cart routes
+RewriteRule ^cart$ cart/index.php [L,QSA]
+
+# Orders routes
+RewriteRule ^orders$ orders/index.php [L,QSA]
+RewriteRule ^orders/(\d+)$ orders/show.php?id=$1 [L,QSA]
+
+# Manual GCash payment routes
+RewriteRule ^payments$ payments/index.php [L,QSA]
+RewriteRule ^payments/mark-sent$ payments/mark-sent.php [L,QSA]
+RewriteRule ^payments/confirm$ payments/confirm.php [L,QSA]
+RewriteRule ^payments/reject$ payments/reject.php [L,QSA]
+
+# Reviews routes
+RewriteRule ^reviews$ reviews/index.php [L,QSA]
+
+# Artisans routes
+RewriteRule ^artisans$ artisans/index.php [L,QSA]
