@@ -59,7 +59,11 @@ export default function BuyerPayments() {
                         {formatPrice(parseFloat(payment.amount))}
                       </p>
                       <div className="flex flex-wrap justify-end gap-2">
-                        <StatusBadge status={payment.status} kind="payment" audience="buyer" />
+                        {/* A frozen payment row on a cancelled order says
+                            nothing - only the order badge tells the story. */}
+                        {payment.order_status !== "cancelled" && (
+                          <StatusBadge status={payment.status} kind="payment" audience="buyer" />
+                        )}
                         <StatusBadge status={payment.order_status} kind="order" />
                       </div>
                     </div>

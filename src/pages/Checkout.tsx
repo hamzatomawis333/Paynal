@@ -26,6 +26,10 @@ import { toast } from "sonner";
 import { ShoppingBag, MapPin, CreditCard, Wallet, Loader2, CheckCircle, TriangleAlert } from "lucide-react";
 
 const GCASH_CODE = "gcash";
+const COD_CODE = "cod";
+// What checkout is allowed to offer. Both must exist as active rows in
+// payment_methods (admin controls availability).
+const CHECKOUT_CODES = [GCASH_CODE, COD_CODE];
 
 const iconMap: Record<string, React.ElementType> = {
   cod: Wallet,
@@ -55,11 +59,13 @@ const Checkout = () => {
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [selectedMethod, setSelectedMethod] = useState<string>(GCASH_CODE);
   const [success, setSuccess] = useState<{
     order_id: number;
     order_number: string;
     grand_total: number;
     seller_count: number;
+    payment_method: string;
   } | null>(null);
 
   const [address, setAddress] = useState<PhilippineAddress>(EMPTY_ADDRESS);
@@ -86,10 +92,18 @@ const Checkout = () => {
       navigate("/cart");
       return;
     }
-    // Only GCash is offered at checkout; other active methods are ignored.
+    // GCash and Cash on Delivery are the two choices; other active methods
+    // are ignored. If the remembered selection vanished with a reload, fall
+    // back to whatever is available.
     apiFetch<{ payment_methods: PaymentMethod[] }>("/products/payment-methods.php")
       .then((data) => {
-        setPaymentMethods(data.payment_methods.filter((pm) => pm.code === GCASH_CODE));
+        const available = data.payment_methods.filter((pm) => CHECKOUT_CODES.includes(pm.code));
+        setPaymentMethods(available);
+        setSelectedMethod((current) =>
+          available.some((pm) => pm.code === current)
+            ? current
+            : available[0]?.code ?? current
+        );
       })
       .catch(() => {
         setPaymentMethods([]);
@@ -97,9 +111,9 @@ const Checkout = () => {
       .finally(() => setLoading(false));
   }, []);
 
-  const gcashAvailable = useMemo(
-    () => paymentMethods.some((pm) => pm.code === GCASH_CODE),
-    [paymentMethods],
+  const methodAvailable = useMemo(
+    () => paymentMethods.some((pm) => pm.code === selectedMethod),
+    [paymentMethods, selectedMethod],
   );
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -113,8 +127,8 @@ const Checkout = () => {
       toast.error("Please complete the region, province, city and barangay");
       return;
     }
-    if (!gcashAvailable) {
-      toast.error("GCash is currently unavailable. Please try again later.");
+    if (!methodAvailable) {
+      toast.error("The selected payment method is unavailable. Please pick another one.");
       return;
     }
 
@@ -123,7 +137,7 @@ const Checkout = () => {
       const data = await apiFetch<{
         success: boolean;
         duplicate?: boolean;
-        order: { id: number; order_number: string; grand_total: number };
+        order: { id: number; order_number: string; grand_total: number; payment_method: string };
         payment_groups?: { seller_id: number | null }[];
       }>("/orders/index.php", {
         method: "POST",
@@ -136,7 +150,7 @@ const Checkout = () => {
             city: address.city,
             barangay: address.barangay,
           },
-          payment_method: GCASH_CODE,
+          payment_method: selectedMethod,
           notes,
           idempotency_key: idempotencyKey,
           items: selectedItems.map((item) => ({
@@ -164,6 +178,7 @@ const Checkout = () => {
         order_number: data.order.order_number,
         grand_total: data.order.grand_total,
         seller_count: data.payment_groups?.length ?? 1,
+        payment_method: data.order.payment_method ?? selectedMethod,
       });
       toast.success(
         data.duplicate ? "This order was already placed" : "Order placed successfully!"
@@ -177,6 +192,7 @@ const Checkout = () => {
 
   // Success state
   if (success) {
+    const isCod = success.payment_method === COD_CODE;
     return (
       <>
         <Helmet><title>Order Confirmed | LanaoCrafts</title></Helmet>
@@ -194,7 +210,9 @@ const Checkout = () => {
                 </p>
                 <p className="mt-1 text-lg font-bold text-primary">{formatPrice(success.grand_total)}</p>
                 <p className="mt-3 text-sm text-muted-foreground">
-                  Complete your GCash payment below to confirm your order.
+                  {isCod
+                    ? "Pay in cash when your order arrives. The sellers have been notified and will prepare your items."
+                    : "Complete your GCash payment below to confirm your order."}
                 </p>
                 <div className="mt-6 flex gap-3 justify-center">
                   <Button variant="outline" onClick={() => navigate("/products")}>Continue Shopping</Button>
@@ -203,10 +221,14 @@ const Checkout = () => {
               </CardContent>
             </Card>
 
-            <GcashPaymentPanel
-              orderId={success.order_id}
-              sellerCount={success.seller_count}
-            />
+            {/* COD has nothing to pay for up front - there is no reference to
+                send, so the GCash panel would be a lie. */}
+            {!isCod && (
+              <GcashPaymentPanel
+                orderId={success.order_id}
+                sellerCount={success.seller_count}
+              />
+            )}
           </main>
           <Footer />
         </div>
@@ -278,22 +300,32 @@ const Checkout = () => {
                     <div className="flex items-center gap-2 py-4 text-muted-foreground">
                       <Loader2 className="h-4 w-4 animate-spin" /> Loading payment options...
                     </div>
-                  ) : !gcashAvailable ? (
+                  ) : paymentMethods.length === 0 ? (
                     <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
                       <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
                       <p>
-                        GCash is not currently available. Please try again later or
-                        contact us to place your order.
+                        No payment methods are available right now. Please try
+                        again later or contact us to place your order.
                       </p>
                     </div>
                   ) : (
-                    <RadioGroup value={GCASH_CODE} className="space-y-3">
+                    <RadioGroup
+                      value={selectedMethod}
+                      onValueChange={setSelectedMethod}
+                      className="space-y-3"
+                      aria-label="Payment method"
+                    >
                       {paymentMethods.map((pm) => {
                         const Icon = iconMap[pm.icon] || Wallet;
+                        const isSelected = pm.code === selectedMethod;
                         return (
                           <label
                             key={pm.code}
-                            className="flex cursor-pointer items-center gap-4 rounded-lg border border-primary bg-primary/5 p-4"
+                            className={`flex cursor-pointer items-center gap-4 rounded-lg border p-4 transition-colors ${
+                              isSelected
+                                ? "border-primary bg-primary/5"
+                                : "border-border hover:border-primary/50"
+                            }`}
                           >
                             <RadioGroupItem value={pm.code} />
                             <div className="rounded-md bg-muted p-2">
@@ -355,7 +387,7 @@ const Checkout = () => {
                     type="submit"
                     variant="hero"
                     className="w-full"
-                    disabled={submitting || loading || !canSubmit || !gcashAvailable || selectedItems.length === 0}
+                    disabled={submitting || loading || !canSubmit || !methodAvailable || selectedItems.length === 0}
                   >
                     {submitting ? (
                       <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Placing Order...</>

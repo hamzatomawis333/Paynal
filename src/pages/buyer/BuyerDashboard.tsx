@@ -140,7 +140,14 @@ export default function BuyerDashboard() {
                       <span className="text-sm font-semibold tabular-nums text-foreground">
                         {formatPrice(parseFloat(order.total_amount))}
                       </span>
-                      <StatusBadge status={order.status} kind="order" />
+                      <StatusBadge
+                        status={
+                          order.cancel_requested && order.status !== "cancelled"
+                            ? "cancel_requested"
+                            : order.status
+                        }
+                        kind="order"
+                      />
                     </div>
                   </div>
                 ))}

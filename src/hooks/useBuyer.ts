@@ -8,6 +8,7 @@ import {
   updateBuyerProfile,
   changeBuyerPassword,
   fetchBuyerPayments,
+  cancelBuyerOrder,
 } from "@/lib/buyer-api";
 
 /**
@@ -96,5 +97,18 @@ export function useBuyerPayments() {
     // Sellers confirm payments manually; poll so the buyer's payment status
     // flips to "paid / confirmed" while they watch instead of after a reload.
     refetchInterval: 10_000,
+  });
+}
+
+/** Buyer cancels an order that has not shipped yet. */
+export function useCancelBuyerOrder() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: cancelBuyerOrder,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["buyer-orders"] });
+      // The seller sees the stock they got back plus the cancellation.
+      queryClient.invalidateQueries({ queryKey: ["seller-orders"] });
+    },
   });
 }

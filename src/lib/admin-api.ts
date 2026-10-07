@@ -12,8 +12,9 @@ import type {
 } from "@/types/api";
 
 // ==================== USERS ====================
-export async function fetchAdminUsers() {
-  return apiFetch<{ users: AdminUser[] }>("/admin/users.php");
+export async function fetchAdminUsers(limit?: number) {
+  const qs = limit ? `?limit=${limit}` : "";
+  return apiFetch<{ users: AdminUser[]; total?: number }>(`/admin/users.php${qs}`);
 }
 
 export async function updateAdminUser(userId: number, data: { role?: string; is_active?: number }) {
@@ -93,9 +94,14 @@ export async function deleteAdminPaymentMethod(id: number) {
 }
 
 // ==================== SUBSCRIPTIONS ====================
-export async function fetchAdminSubscriptions(status?: string) {
-  const query = status ? `?status=${status}` : "";
-  return apiFetch<{ subscriptions: AdminSubscription[] }>(`/admin/subscriptions.php${query}`);
+export async function fetchAdminSubscriptions(status?: string, limit?: number) {
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  if (limit) params.set("limit", String(limit));
+  const qs = params.toString();
+  return apiFetch<{ subscriptions: AdminSubscription[]; total?: number }>(
+    `/admin/subscriptions.php${qs ? `?${qs}` : ""}`
+  );
 }
 
 export async function manageAdminSubscription(data: {
@@ -172,6 +178,27 @@ export async function updatePlatformSettings(data: {
   });
 }
 
+// ==================== AUDIT LOG ====================
+export interface AdminAuditEntry {
+  id: number;
+  admin_id: number | null;
+  admin_name: string | null;
+  admin_email: string | null;
+  action: string;
+  target_type: string;
+  target_id: number;
+  details: Record<string, unknown> | string | null;
+  created_at: string;
+}
+
+export async function fetchAdminAuditLog(limit = 100, action?: string) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (action) params.set("action", action);
+  return apiFetch<{ entries: AdminAuditEntry[]; count: number }>(
+    `/admin/audit.php?${params.toString()}`
+  );
+}
+
 // ==================== REPORTS ====================
 export async function fetchAdminReports() {
   return apiFetch<{
@@ -193,15 +220,19 @@ export async function fetchAdminOrders(filters?: {
   status?: string;
   search?: string;
   buyerId?: string;
-}) {
+}, limit?: number) {
   const params = new URLSearchParams();
   if (filters?.status && filters.status !== "all") params.set("status", filters.status);
   if (filters?.search && filters.search.trim() !== "") params.set("search", filters.search.trim());
   if (filters?.buyerId && filters.buyerId !== "all") params.set("buyer", filters.buyerId);
+  if (limit) params.set("limit", String(limit));
   const qs = params.toString();
-  return apiFetch<{ orders: AdminOrder[]; buyers: AdminOrderBuyer[] }>(
-    `/admin/orders.php${qs ? `?${qs}` : ""}`
-  );
+  return apiFetch<{
+    orders: AdminOrder[];
+    buyers: AdminOrderBuyer[];
+    orders_total?: number;
+    buyers_total?: number;
+  }>(`/admin/orders.php${qs ? `?${qs}` : ""}`);
 }
 
 export async function fetchAdminOrderDetail(orderId: number) {

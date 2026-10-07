@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowLeft, CheckCircle2, Clock, MessageSquare, ShieldCheck, TriangleAlert, Wallet,
+  ArrowLeft, CheckCircle2, Clock, MessageSquare, ShieldCheck, TriangleAlert, Wallet, XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { BuyerLayout } from "@/components/buyer/BuyerLayout";
@@ -324,6 +324,9 @@ export default function BuyerOrderPayment() {
   }, [load, orderId]);
 
   const groups = useMemo(() => snapshot?.payment_groups ?? [], [snapshot]);
+  // A cancelled order has nothing left to pay; the whole form is replaced by
+  // a notice so no reference can be submitted against it.
+  const orderCancelled = snapshot?.order.status === "cancelled";
 
   const submittedCount = groups.filter(
     (g) => g.status === "awaiting_confirmation" || g.status === "completed",
@@ -340,12 +343,14 @@ export default function BuyerOrderPayment() {
   // terminal, but now the buyer can resend and the seller can confirm late, so
   // treating it as settled would let this page go stale on exactly the screen
   // where the buyer is waiting for the seller's reply.
-  const canStillMove = groups.some(
-    (g) =>
-      g.status === "pending" ||
-      g.status === "awaiting_confirmation" ||
-      g.status === "rejected",
-  );
+  const canStillMove =
+    !orderCancelled &&
+    groups.some(
+      (g) =>
+        g.status === "pending" ||
+        g.status === "awaiting_confirmation" ||
+        g.status === "rejected",
+    );
   useEffect(() => {
     if (loading || error || !canStillMove) return;
     timer.current = setInterval(() => void load(), POLL_MS);
@@ -376,7 +381,11 @@ export default function BuyerOrderPayment() {
                 ? `Pay for ${snapshot.order.order_number}`
                 : "Complete your payment"
             }
-            subtitle="Send a separate GCash transfer to each seller, then enter the reference from your receipt."
+            subtitle={
+              orderCancelled
+                ? "This order was cancelled - there is nothing left to pay."
+                : "Send a separate GCash transfer to each seller, then enter the reference from your receipt."
+            }
           />
         </div>
 
@@ -391,6 +400,24 @@ export default function BuyerOrderPayment() {
             description={error}
             onRetry={() => void load()}
           />
+        ) : orderCancelled ? (
+          <Card className="shadow-soft">
+            <CardContent className="flex flex-col items-center gap-3 p-8 text-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-destructive/10">
+                <XCircle className="h-7 w-7 text-destructive" aria-hidden="true" />
+              </div>
+              <h2 className="font-display text-xl font-bold text-foreground">
+                This order was cancelled
+              </h2>
+              <p className="max-w-md text-sm text-muted-foreground">
+                No payment is needed. If you already sent a GCash payment for this
+                order, message the seller to arrange the refund.
+              </p>
+              <Button asChild variant="outline" size="sm">
+                <Link to="/account/orders">Back to My Orders</Link>
+              </Button>
+            </CardContent>
+          </Card>
         ) : groups.length === 0 ? (
           <EmptyState
             icon={Wallet}

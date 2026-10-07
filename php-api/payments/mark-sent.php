@@ -27,7 +27,7 @@ $body = getBody();
 $paymentId = (int)($body['payment_id'] ?? 0);
 if (!$paymentId) respond(["error" => "payment_id is required"], 400);
 
-$stmt = $conn->prepare("SELECT pay.*, o.user_id AS buyer_id, o.order_number FROM payments pay JOIN orders o ON o.id = pay.order_id WHERE pay.id = ?");
+$stmt = $conn->prepare("SELECT pay.*, o.user_id AS buyer_id, o.order_number, o.status AS order_status FROM payments pay JOIN orders o ON o.id = pay.order_id WHERE pay.id = ?");
 $stmt->bind_param("i", $paymentId);
 $stmt->execute();
 $payment = $stmt->get_result()->fetch_assoc();
@@ -37,6 +37,12 @@ if (!$payment) respond(["error" => "Payment not found"], 404);
 // Checked before validating the reference so an unauthorised caller always gets
 // 403 rather than a hint about the payload shape.
 if ((int)$payment['buyer_id'] !== $userId) respond(["error" => "Forbidden"], 403);
+
+// A cancelled order is dead: no reference may be submitted against it, so the
+// payment row stays frozen exactly as the cancellation left it.
+if ($payment['order_status'] === 'cancelled') {
+    respond(["error" => "This order was cancelled. No payment is needed."], 409);
+}
 
 // REQUIRED. The GCash reference number is the only shared evidence that money
 // moved, so it is the basis of the seller's verification. Without it the seller

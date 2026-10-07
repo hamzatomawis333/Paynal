@@ -41,6 +41,7 @@ export default function AdminSubscriptions() {
   const {
     data: subscriptions, isLoading, isError, refetch,
     manageSubscription, deleteSubscription, confirmPayment, rejectPayment,
+    total, hasMore, loadMore,
   } = useAdminSubscriptions(activeTab || undefined);
   const startChat = useStartConversation();
   const platform = usePlatformSettings();
@@ -440,6 +441,18 @@ export default function AdminSubscriptions() {
                 </TableBody>
               </Table>
             )}
+            {!isLoading && !isError && subscriptions?.length ? (
+              <div className="flex flex-col items-center gap-2 border-t px-6 py-4 sm:flex-row sm:justify-between">
+                <p className="text-sm text-muted-foreground">
+                  Showing {subscriptions.length} of {total} subscription{total === 1 ? "" : "s"}
+                </p>
+                {hasMore && (
+                  <Button variant="outline" size="sm" onClick={loadMore}>
+                    Load more
+                  </Button>
+                )}
+              </div>
+            ) : null}
           </CardContent>
         </Card>
       </div>

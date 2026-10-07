@@ -35,7 +35,6 @@ clearLegacyApiBase();
 
 import { getErrorMessage } from "./errors";
 import type {
-  ApiCartResponse,
   ApiOrder,
   ApiOrderDetail,
 } from "@/types/api";
@@ -68,6 +67,29 @@ export function resolveApiImageUrl(imageUrl?: string | null): string {
 // Helper: get auth token from localStorage
 function getToken(): string | null {
   return localStorage.getItem("auth_token");
+}
+
+// An expired/invalid token used to leave the app in a zombie "logged in"
+// state where every request failed. On 401 (outside the auth forms) we clear
+// the session and send the user back to /auth once.
+let redirectingToAuth = false;
+function handleExpiredSession(status: number, endpoint: string): void {
+  if (status !== 401) return;
+  if (endpoint.startsWith("/auth/")) return; // wrong password on the login form
+  if (!getToken()) return;
+
+  logoutUser();
+
+  const authPath = `${import.meta.env.BASE_URL}auth`;
+  if (
+    redirectingToAuth ||
+    window.location.pathname === authPath ||
+    window.location.pathname.startsWith(`${authPath}/`)
+  ) {
+    return;
+  }
+  redirectingToAuth = true;
+  window.location.assign(authPath);
 }
 
 // Helper: make API requests
@@ -112,6 +134,7 @@ export async function apiFetch<T>(endpoint: string, options: RequestInit = {}): 
         `${requestUrl} -> HTTP ${response.status}, content-type "${contentType || "none"}"` +
         (parsed ? "" : ", body is not valid JSON");
     } else if (!response.ok) {
+      handleExpiredSession(response.status, endpoint);
       throw new Error(getErrorMessage(data, "Something went wrong"));
     } else {
       return data as T;
@@ -253,8 +276,15 @@ export async function fetchArtisans() {
 
 // ==================== CART ====================
 
+/** One row of GET /cart/index.php: full product fields + cart quantity. */
+export type ApiCartRow = ApiProduct & {
+  quantity: number;
+  /** price * quantity, computed server-side */
+  subtotal: number;
+};
+
 export async function fetchCart() {
-  return apiFetch<ApiCartResponse>("/cart/index.php");
+  return apiFetch<{ cart: ApiCartRow[]; total: number }>("/cart/index.php");
 }
 
 export async function addToCartApi(productId: number, quantity: number = 1) {
@@ -272,10 +302,15 @@ export async function updateCartItem(productId: number, quantity: number) {
 }
 
 export async function removeCartItem(productId: number) {
-  return apiFetch("/cart/index.php", {
+  // PHP reads DELETE inputs from the query string, not the body.
+  return apiFetch(`/cart/index.php?product_id=${productId}`, {
     method: "DELETE",
-    body: JSON.stringify({ product_id: productId }),
   });
+}
+
+/** Removes every row for the current user (no product_id param). */
+export async function clearCartApi() {
+  return apiFetch("/cart/index.php", { method: "DELETE" });
 }
 
 // ==================== ORDERS ====================

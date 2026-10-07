@@ -42,12 +42,14 @@ if ($method === 'GET') {
 if ($method === 'POST') {
     $data = getBody();
 
-    // Checkout only accepts GCash. Anything else is rejected outright rather
-    // than silently coerced, so a tampered payload cannot create another mode.
-    $ALLOWED_PAYMENT_METHODS = ['gcash'];
+    // Checkout accepts GCash (paid up front per seller) and Cash on Delivery
+    // (no payment rows; the courier collects). Anything else is rejected
+    // outright rather than silently coerced, so a tampered payload cannot
+    // create another mode.
+    $ALLOWED_PAYMENT_METHODS = ['gcash', 'cod'];
     $paymentMethod = trim((string) ($data['payment_method'] ?? ''));
     if (!in_array($paymentMethod, $ALLOWED_PAYMENT_METHODS, true)) {
-        respond(["error" => "Only GCash is accepted for this order"], 400);
+        respond(["error" => "Only GCash and Cash on Delivery are accepted for this order"], 400);
     }
 
     $notes = data_string($data, 'notes', 500);
@@ -266,18 +268,23 @@ if ($existing) {
             respond(["error" => "The seller account for one of these products is currently unavailable. Please remove it from your cart."], 400);
         }
 
-        $digits = gcash_digits($seller['gcash_number']);
-        if ($digits === '') {
-            respond([
-                "error" => "This seller has not configured a GCash payment number yet. Please contact the seller.",
-                "seller_id" => (int) $sellerId,
-                "seller_name" => $seller['full_name'],
-            ], 400);
+        // A COD order needs no GCash destination - the courier collects - so
+        // the seller's gcash_number is only required when the buyer will pay
+        // up front.
+        if ($paymentMethod === 'gcash') {
+            $digits = gcash_digits($seller['gcash_number']);
+            if ($digits === '') {
+                respond([
+                    "error" => "This seller has not configured a GCash payment number yet. Please contact the seller.",
+                    "seller_id" => (int) $sellerId,
+                    "seller_name" => $seller['full_name'],
+                ], 400);
+            }
+            $group['gcash_number'] = $digits;
         }
 
         $group['seller_id'] = (int) $sellerId;
         $group['seller_name'] = $seller['full_name'];
-        $group['gcash_number'] = $digits;
     }
     unset($group);
 
@@ -307,11 +314,12 @@ if ($existing) {
     $conn->begin_transaction();
     try {
         // Create order
-        $stmt = $conn->prepare("INSERT INTO orders (user_id, order_number, total_amount, shipping_fee, payment_method, payment_status, shipping_address, notes, idempotency_key) VALUES (?, ?, ?, ?, 'gcash', 'pending', ?, ?, ?)");
+        $stmt = $conn->prepare("INSERT INTO orders (user_id, order_number, total_amount, shipping_fee, payment_method, payment_status, shipping_address, notes, idempotency_key) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)");
         $nullableKey = $idempotencyKey === '' ? null : $idempotencyKey;
-        // 7 placeholders: user_id, order_number, total, shipping, address,
-        // notes, idempotency_key. payment_method/payment_status are literals.
-        $stmt->bind_param("isddsss", $userId, $orderNumber, $totalAmount, $shippingFee, $shippingAddress, $notes, $nullableKey);
+        // 8 placeholders: user_id, order_number, total, shipping,
+        // payment_method, shipping_address, notes, idempotency_key.
+        // payment_status is a literal.
+        $stmt->bind_param("isddssss", $userId, $orderNumber, $totalAmount, $shippingFee, $paymentMethod, $shippingAddress, $notes, $nullableKey);
         $stmt->execute();
         $orderId = (int) $conn->insert_id;
 
@@ -327,61 +335,88 @@ if ($existing) {
             $stmt->execute();
         }
 
-        // One payment request + one conversation inquiry per seller. A buyer is
-        // told to pay each seller separately, and no seller ever sees another
-        // seller's items, subtotal or GCash number.
+        // One conversation per seller either way. GCash orders also get a
+        // payment row + payment inquiry per seller; COD orders get a
+        // collect-on-delivery message instead and no payment rows at all.
         $groups = [];
         foreach ($sellerGroups as $sellerId => $group) {
             $conversationId = ensureBuyerSellerConversation($conn, (int) $userId, (int) $sellerId);
 
-            $stmt = $conn->prepare("INSERT INTO payments (order_id, seller_id, amount, payment_method, status, conversation_id) VALUES (?, ?, ?, 'gcash', 'pending', ?)");
-            // 4 placeholders: order_id, seller_id, amount, conversation_id.
-            // payment_method and status are literals.
-            $stmt->bind_param("iidi", $orderId, $sellerId, $group['amount'], $conversationId);
-            $stmt->execute();
-            $paymentId = (int) $conn->insert_id;
+            if ($paymentMethod === 'gcash') {
+                $stmt = $conn->prepare("INSERT INTO payments (order_id, seller_id, amount, payment_method, status, conversation_id) VALUES (?, ?, ?, 'gcash', 'pending', ?)");
+                // 4 placeholders: order_id, seller_id, amount, conversation_id.
+                // payment_method and status are literals.
+                $stmt->bind_param("iidi", $orderId, $sellerId, $group['amount'], $conversationId);
+                $stmt->execute();
+                $paymentId = (int) $conn->insert_id;
 
-            postSystemMessage(
-                $conn,
-                $conversationId,
-                (int) $userId,
-                buildPaymentInquiry(
-                    $orderNumber,
-                    $group['seller_name'],
-                    $group['gcash_number'],
-                    $group['items'],
-                    $group['subtotal'],
-                    $group['shipping_share']
-                )
-            );
+                postSystemMessage(
+                    $conn,
+                    $conversationId,
+                    (int) $userId,
+                    buildPaymentInquiry(
+                        $orderNumber,
+                        $group['seller_name'],
+                        $group['gcash_number'],
+                        $group['items'],
+                        $group['subtotal'],
+                        $group['shipping_share']
+                    )
+                );
 
-            // The seller used to learn about the order only by refreshing the
-            // orders list or opening the chat. Inside the transaction, so it
-            // rolls back with the order if anything later fails.
-            notifyUser(
-                $conn,
-                (int) $sellerId,
-                'order',
-                'New order ' . $orderNumber,
-                gcash_money($group['amount']) . ' awaiting GCash payment. '
-                    . 'Payment instructions were sent in your conversation with the buyer.',
-                '/seller/orders',
-                $orderId
-            );
+                // The seller used to learn about the order only by refreshing the
+                // orders list or opening the chat. Inside the transaction, so it
+                // rolls back with the order if anything later fails.
+                notifyUser(
+                    $conn,
+                    (int) $sellerId,
+                    'order',
+                    'New order ' . $orderNumber,
+                    gcash_money($group['amount']) . ' awaiting GCash payment. '
+                        . 'Payment instructions were sent in your conversation with the buyer.',
+                    '/seller/orders',
+                    $orderId
+                );
 
-            $groups[] = [
-                'payment_id'      => $paymentId,
-                'seller_id'       => (int) $sellerId,
-                'seller_name'     => $group['seller_name'],
-                'gcash_number'    => $group['gcash_number'],
-                'amount'          => (float) $group['amount'],
-                'subtotal'        => (float) $group['subtotal'],
-                'shipping_share'  => (float) $group['shipping_share'],
-                'status'          => 'pending',
-                'conversation_id' => $conversationId,
-                'rejection_reason' => null,
-                'items'           => $group['items'],
-            ];
+                $groups[] = [
+                    'payment_id'      => $paymentId,
+                    'seller_id'       => (int) $sellerId,
+                    'seller_name'     => $group['seller_name'],
+                    'gcash_number'    => $group['gcash_number'],
+                    'amount'          => (float) $group['amount'],
+                    'subtotal'        => (float) $group['subtotal'],
+                    'shipping_share'  => (float) $group['shipping_share'],
+                    'status'          => 'pending',
+                    'conversation_id' => $conversationId,
+                    'rejection_reason' => null,
+                    'items'           => $group['items'],
+                ];
+            } else {
+                $itemList = [];
+                foreach ($group['items'] as $gItem) {
+                    $itemList[] = (int) $gItem['quantity'] . ' x ' . $gItem['name'];
+                }
+
+                postSystemMessage(
+                    $conn,
+                    $conversationId,
+                    (int) $userId,
+                    'Order ' . $orderNumber . ' has been placed (Cash on Delivery).' . "\n"
+                        . 'Amount to collect on arrival: ' . gcash_money($group['amount']) . "\n"
+                        . 'Items: ' . implode(', ', $itemList)
+                );
+
+                notifyUser(
+                    $conn,
+                    (int) $sellerId,
+                    'order',
+                    'New COD order ' . $orderNumber,
+                    gcash_money($group['amount']) . ' will be collected on delivery. '
+                        . 'The order details were sent to your conversation with the buyer.',
+                    '/seller/orders',
+                    $orderId
+                );
+            }
         }
 
         // Clear cart
@@ -400,6 +435,7 @@ if ($existing) {
                 "shipping_fee" => $shippingFee,
                 "grand_total" => $grandTotal,
                 "payment_status" => 'pending',
+                "payment_method" => $paymentMethod,
             ],
             "payment_groups" => $groups,
         ], 201);

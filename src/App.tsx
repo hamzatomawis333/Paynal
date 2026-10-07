@@ -45,14 +45,18 @@ import AdminSubscriptions from "./pages/admin/AdminSubscriptions";
 import AdminMessages from "./pages/admin/AdminMessages";
 import AdminProfile from "./pages/admin/AdminProfile";
 
+import AdminAuditLog from "./pages/admin/AdminAuditLog";
+
 const queryClient = new QueryClient();
 
 const App = () => (
   <HelmetProvider>
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        <CartProvider>
-          <AuthProvider>
+        {/* AuthProvider must wrap CartProvider: the cart hydrates from the
+            server based on the resolved login state. */}
+        <AuthProvider>
+          <CartProvider>
           <TooltipProvider>
             <Toaster />
             <Sonner />
@@ -100,14 +104,15 @@ const App = () => (
                 <Route path="/admin/sellers" element={<AdminSellers />} />
                 <Route path="/admin/sellers/:id" element={<AdminSellerDetail />} />
                 <Route path="/admin/reports" element={<AdminReports />} />
+                <Route path="/admin/audit" element={<AdminAuditLog />} />
                 <Route path="/admin/profile" element={<AdminProfile />} />
               </Route>
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>
           </TooltipProvider>
-          </AuthProvider>
-        </CartProvider>
+          </CartProvider>
+        </AuthProvider>
       </ThemeProvider>
     </QueryClientProvider>
   </HelmetProvider>

@@ -11,6 +11,7 @@ import {
   UserCheck,
   MessageCircle,
   User,
+  History,
 } from "lucide-react";
 
 const sidebarLinks: NavItem[] = [
@@ -23,6 +24,7 @@ const sidebarLinks: NavItem[] = [
   { href: "/admin/categories", label: "Categories", icon: FolderTree },
   { href: "/admin/payment-methods", label: "Payments", icon: CreditCard },
   { href: "/admin/reports", label: "Reports", icon: BarChart3 },
+  { href: "/admin/audit", label: "Audit Log", icon: History },
   { href: "/admin/profile", label: "Profile", icon: User },
 ];
 

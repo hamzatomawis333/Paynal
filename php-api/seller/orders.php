@@ -82,9 +82,11 @@ if ($method === 'PUT') {
     $validStatuses = ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'];
     if (!in_array($status, $validStatuses, true)) respond(["error" => "Invalid status"], 400);
 
-    // Verify seller has products in this order
+    // Verify seller has products in this order. The buyer is fetched too so a
+    // cancellation confirmation can ping them straight away, and the
+    // cancel_requested flag is read here to gate the two-step handshake.
     $check = $conn->prepare("
-        SELECT o.id FROM orders o
+        SELECT o.id, o.user_id, o.status, o.order_number, o.cancel_requested FROM orders o
         JOIN order_items oi ON o.id = oi.order_id
         JOIN products p ON oi.product_id = p.id
         WHERE o.id = ? AND p.seller_id = ?
@@ -92,7 +94,15 @@ if ($method === 'PUT') {
     ");
     $check->bind_param("ii", $orderId, $sellerId);
     $check->execute();
-    if (!$check->get_result()->fetch_assoc()) respond(["error" => "Order not found"], 404);
+    $orderRow = $check->get_result()->fetch_assoc();
+    if (!$orderRow) respond(["error" => "Order not found"], 404);
+
+    // Two-step cancellation: the buyer must ask first (flagged from their
+    // orders screen); only then may the seller confirm it. A seller cannot
+    // cancel - paid or not - on their own initiative.
+    if ($status === 'cancelled' && (int) $orderRow['cancel_requested'] !== 1) {
+        respond(["error" => "The buyer has not requested a cancellation for this order."], 409);
+    }
 
     // An order must not advance to processing/shipped/delivered while money is
     // still unverified. 'cancelled' is always allowed.
@@ -115,10 +125,36 @@ if ($method === 'PUT') {
         }
     }
 
-    $stmt = $conn->prepare("UPDATE orders SET status = ? WHERE id = ?");
+    $stmt = $conn->prepare("UPDATE orders SET status = ?, updated_at = NOW() WHERE id = ?");
     $stmt->bind_param("si", $status, $orderId);
 
     if ($stmt->execute()) {
+        // Confirming the buyer's cancellation request has to reach them: they
+        // are waiting on an answer. Only fires on the actual transition, so
+        // re-selecting "cancelled" in the dropdown is quiet.
+        if ($status === 'cancelled' && $orderRow['status'] !== 'cancelled') {
+            // The items are not going out after all - put them back on the
+            // shelf.
+            $restore = $conn->prepare(
+                "UPDATE products p JOIN order_items oi ON oi.product_id = p.id
+                 SET p.stock_quantity = p.stock_quantity + oi.quantity
+                 WHERE oi.order_id = ?"
+            );
+            $restore->bind_param("i", $orderId);
+            $restore->execute();
+
+            require_once __DIR__ . '/../notifications-lib.php';
+            notifyUser(
+                $conn,
+                (int) $orderRow['user_id'],
+                'order',
+                'Order ' . $orderRow['order_number'] . ' cancelled',
+                'The seller confirmed your cancellation request. If you already sent a GCash payment, arrange the refund in your chat with them.',
+                '/account/orders',
+                $orderId
+            );
+        }
+
         respond(["success" => true, "status" => $status]);
     } else {
         respond(["error" => "Failed to update order"], 500);

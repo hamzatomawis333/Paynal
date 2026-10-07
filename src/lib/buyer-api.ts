@@ -25,6 +25,11 @@ export interface BuyerOrder {
    */
   needs_payment: number | boolean;
   payment_method: string;
+  /**
+   * Two-step cancellation: 1 means the buyer has asked to cancel and a seller
+   * still has to confirm it. The order itself is still fully active.
+   */
+  cancel_requested: number | boolean;
   shipping_address: string;
   notes: string;
   created_at: string;
@@ -46,6 +51,13 @@ export interface BuyerOrder {
  * payment rows have not been observed yet.
  */
 export function isOrderAwaitingPayment(order: BuyerOrder) {
+  // A cancelled order - or one the buyer has already asked to cancel - is
+  // never waiting on their money. Excluding it here moves it into the real
+  // order list, where it shows with its cancelled / cancellation-requested
+  // badge instead of an invitation to pay (the amber "Waiting for your GCash
+  // payment" box on My Orders, and the dashboard's "Finish your payment").
+  if (order.status === "cancelled") return false;
+  if (order.cancel_requested === 1 || order.cancel_requested === true) return false;
   if (order.needs_payment === true || order.needs_payment === 1) return true;
   if (order.needs_payment === false || order.needs_payment === 0) return false;
   return order.payment_status === "pending" || order.payment_status === "unpaid";
@@ -75,6 +87,23 @@ export async function fetchBuyerOrders() {
 
 export async function fetchBuyerOrder(id: number) {
   return apiFetch<{ order: BuyerOrder }>(`/orders/show.php?id=${id}`);
+}
+
+/**
+ * Ask to cancel an order the buyer placed, as long as it has not shipped yet.
+ * The order stays active until a seller confirms; every seller on the order
+ * is notified of the request.
+ */
+export async function cancelBuyerOrder(orderId: number) {
+  return apiFetch<{
+    success: boolean;
+    status: string;
+    cancel_requested: boolean;
+    already?: boolean;
+  }>("/orders/cancel.php", {
+    method: "POST",
+    body: JSON.stringify({ order_id: orderId }),
+  });
 }
 
 // ==================== WISHLIST ====================

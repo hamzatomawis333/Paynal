@@ -45,6 +45,8 @@ const orderStatus: Record<string, StatusEntry> = {
   shipped: { label: "Shipped", tone: "violet" },
   delivered: { label: "Delivered", tone: "green" },
   cancelled: { label: "Cancelled", tone: "red" },
+  /** Synthetic: the order's cancel_requested flag, while status is still live. */
+  cancel_requested: { label: "Cancellation requested", tone: "amber" },
 };
 
 /** Payment-group status as the BUYER reads it. */

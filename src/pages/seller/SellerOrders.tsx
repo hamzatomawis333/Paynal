@@ -81,6 +81,11 @@ export default function SellerOrders() {
                   {orders.map((order) => {
                     const locked = LOCKED_STATUSES.includes(order.status);
                     const blocked = isBlockedByPayment(order);
+                    // Two-step cancellation: "cancelled" may only be picked
+                    // after the buyer has asked for it. The server enforces
+                    // this too - this just explains it instead of failing.
+                    const cancelRequested =
+                      order.cancel_requested === 1 || order.cancel_requested === true;
                     return (
                       <TableRow key={order.id} className="align-top">
                         <TableCell className="font-medium">
@@ -111,6 +116,7 @@ export default function SellerOrders() {
                             <SellerPaymentCard
                               payment={order.payment}
                               orderId={order.id}
+                              orderStatus={order.status}
                               onChanged={refetch}
                             />
                           ) : (
@@ -133,12 +139,21 @@ export default function SellerOrders() {
                               </SelectTrigger>
                               <SelectContent>
                                 {statusOptions.map((s) => (
-                                  <SelectItem key={s} value={s}>
+                                  <SelectItem
+                                    key={s}
+                                    value={s}
+                                    disabled={s === "cancelled" && !cancelRequested}
+                                  >
                                     <span className="capitalize">{s}</span>
                                   </SelectItem>
                                 ))}
                               </SelectContent>
                             </Select>
+                          )}
+                          {cancelRequested && !locked && (
+                            <p className="mt-1 text-xs font-medium text-destructive">
+                              Buyer requested cancellation
+                            </p>
                           )}
                           {blocked && (
                             <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">

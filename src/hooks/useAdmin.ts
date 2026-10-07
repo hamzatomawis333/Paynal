@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   fetchAdminUsers, updateAdminUser, deleteAdminUser,
@@ -10,11 +11,31 @@ import {
   fetchAdminOrders, fetchAdminOrderDetail,
   fetchAdminSellers, fetchAdminSellerDetail,
   fetchAdminProfile, updateAdminProfile, changeAdminPassword,
+  fetchAdminAuditLog,
 } from "@/lib/admin-api";
+
+export function useAdminAuditLog(limit = 100, action?: string) {
+  return useQuery({
+    queryKey: ["admin-audit", limit, action ?? "all"],
+    queryFn: async () => (await fetchAdminAuditLog(limit, action ?? undefined)).entries,
+  });
+}
+
+// Rows fetched per round on the admin list pages; "Load more" grows the
+// window (the endpoints default to unlimited when no limit is passed, so
+// every other caller is unaffected).
+const ADMIN_PAGE_SIZE = 25;
 
 export function useAdminUsers() {
   const qc = useQueryClient();
-  const query = useQuery({ queryKey: ["admin-users"], queryFn: async () => (await fetchAdminUsers()).users });
+  const [limit, setLimit] = useState(ADMIN_PAGE_SIZE);
+  const query = useQuery({
+    queryKey: ["admin-users", limit],
+    queryFn: async () => (await fetchAdminUsers(limit)),
+  });
+
+  const users = query.data?.users;
+  const total = query.data?.total ?? users?.length ?? 0;
 
   const updateMutation = useMutation({
     mutationFn: ({ userId, data }: { userId: number; data: { role?: string; is_active?: number } }) => updateAdminUser(userId, data),
@@ -26,7 +47,15 @@ export function useAdminUsers() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-users"] }),
   });
 
-  return { ...query, updateUser: updateMutation, deleteUser: deleteMutation };
+  return {
+    ...query,
+    data: users,
+    total,
+    hasMore: (users?.length ?? 0) < total,
+    loadMore: () => setLimit((l) => l + ADMIN_PAGE_SIZE),
+    updateUser: updateMutation,
+    deleteUser: deleteMutation,
+  };
 }
 
 export function useAdminCategories() {
@@ -77,11 +106,34 @@ export function useAdminReports() {
   return useQuery({ queryKey: ["admin-reports"], queryFn: fetchAdminReports });
 }
 
-export function useAdminOrders(filters?: { status?: string; search?: string; buyerId?: string }) {
-  return useQuery({
-    queryKey: ["admin-orders", filters?.status ?? "all", filters?.search ?? "", filters?.buyerId ?? "all"],
-    queryFn: async () => await fetchAdminOrders(filters),
+export function useAdminOrders(filters?: { status?: string; search?: string; buyerId?: string }, paginated = false) {
+  const [limit, setLimit] = useState(ADMIN_PAGE_SIZE);
+  const query = useQuery({
+    queryKey: [
+      "admin-orders",
+      filters?.status ?? "all",
+      filters?.search ?? "",
+      filters?.buyerId ?? "all",
+      paginated ? limit : "all",
+    ],
+    queryFn: async () => await fetchAdminOrders(filters, paginated ? limit : undefined),
   });
+
+  const data = query.data;
+  const buyersTotal = data?.buyers_total ?? data?.buyers?.length ?? 0;
+  const ordersTotal = data?.orders_total ?? data?.orders?.length ?? 0;
+  const shownTotal = filters?.buyerId && filters.buyerId !== "all" ? ordersTotal : buyersTotal;
+  const shownCount =
+    filters?.buyerId && filters.buyerId !== "all"
+      ? (data?.orders?.length ?? 0)
+      : (data?.buyers?.length ?? 0);
+
+  return {
+    ...query,
+    total: shownTotal,
+    hasMore: shownCount < shownTotal,
+    loadMore: () => setLimit((l) => l + ADMIN_PAGE_SIZE),
+  };
 }
 
 export function useAdminOrderDetail(orderId: number | null) {
@@ -109,10 +161,14 @@ export function useAdminSellerDetail(sellerId: number | null) {
 
 export function useAdminSubscriptions(status?: string) {
   const qc = useQueryClient();
+  const [limit, setLimit] = useState(ADMIN_PAGE_SIZE);
   const query = useQuery({
-    queryKey: ["admin-subscriptions", status],
-    queryFn: async () => (await fetchAdminSubscriptions(status)).subscriptions,
+    queryKey: ["admin-subscriptions", status ?? "all", limit],
+    queryFn: async () => (await fetchAdminSubscriptions(status, limit)),
   });
+
+  const subscriptions = query.data?.subscriptions;
+  const total = query.data?.total ?? subscriptions?.length ?? 0;
 
   const refresh = () => qc.invalidateQueries({ queryKey: ["admin-subscriptions"] });
 
@@ -140,6 +196,10 @@ export function useAdminSubscriptions(status?: string) {
 
   return {
     ...query,
+    data: subscriptions,
+    total,
+    hasMore: (subscriptions?.length ?? 0) < total,
+    loadMore: () => setLimit((l) => l + ADMIN_PAGE_SIZE),
     manageSubscription: manageMutation,
     deleteSubscription: deleteMutation,
     confirmPayment: confirmPaymentMutation,

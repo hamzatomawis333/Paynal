@@ -25,10 +25,12 @@ import type { SellerOrderPayment } from "@/lib/seller-api";
 interface Props {
   payment: SellerOrderPayment;
   orderId: number;
+  /** The order's status - when it is cancelled, no payment action remains. */
+  orderStatus?: string;
   onChanged: () => void;
 }
 
-export default function SellerPaymentCard({ payment, orderId, onChanged }: Props) {
+export default function SellerPaymentCard({ payment, orderId, orderStatus, onChanged }: Props) {
   const [busy, setBusy] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [reasonCode, setReasonCode] = useState<RejectReasonCode>("not_received");
@@ -104,6 +106,8 @@ export default function SellerPaymentCard({ payment, orderId, onChanged }: Props
     }
   };
 
+  const orderCancelled = orderStatus === "cancelled";
+
   return (
     <Card className="border-primary/30">
       <CardContent className="space-y-3 p-4">
@@ -112,25 +116,38 @@ export default function SellerPaymentCard({ payment, orderId, onChanged }: Props
             <Wallet className="h-4 w-4 text-primary" aria-hidden="true" />
             Your GCash share
           </p>
-          <StatusBadge status={payment.status} kind="payment" audience="seller" />
+          {/* On a cancelled order the payment row is frozen - the badge tells
+              THAT story instead of inviting a confirm/reject that would go
+              nowhere. */}
+          {orderCancelled ? (
+            <StatusBadge status="cancelled" kind="order" />
+          ) : (
+            <StatusBadge status={payment.status} kind="payment" audience="seller" />
+          )}
         </div>
 
         <p className="text-xl font-bold tabular-nums text-foreground">
           {formatPrice(payment.amount)}
         </p>
 
-        {/* The reference is the seller's only way to find this transfer in
-            their own GCash history, so it is shown prominently. */}
-        {payment.transaction_reference && (
-          <div className="rounded-md border border-border bg-muted/50 px-3 py-2">
-            <p className="text-xs text-muted-foreground">Buyer&apos;s GCash reference</p>
-            <p className="font-mono text-sm font-bold tracking-wide text-foreground">
-              {payment.transaction_reference}
-            </p>
-          </div>
-        )}
+        {orderCancelled ? (
+          <p className="rounded-md border border-border bg-muted/50 p-2.5 text-xs text-muted-foreground">
+            This order was cancelled. No payment action is needed.
+          </p>
+        ) : (
+          <>
+            {/* The reference is the seller's only way to find this transfer in
+                their own GCash history, so it is shown prominently. */}
+            {payment.transaction_reference && (
+              <div className="rounded-md border border-border bg-muted/50 px-3 py-2">
+                <p className="text-xs text-muted-foreground">Buyer&apos;s GCash reference</p>
+                <p className="font-mono text-sm font-bold tracking-wide text-foreground">
+                  {payment.transaction_reference}
+                </p>
+              </div>
+            )}
 
-        {payment.status === "pending" && (
+            {payment.status === "pending" && (
           <p className="text-xs text-muted-foreground">
             The buyer has not marked this as sent yet. Confirm only after the money
             actually appears in your GCash.
@@ -210,6 +227,8 @@ export default function SellerPaymentCard({ payment, orderId, onChanged }: Props
               </Button>
             </div>
           </div>
+        )}
+          </>
         )}
 
         <Dialog open={receivedOpen} onOpenChange={setReceivedOpen}>

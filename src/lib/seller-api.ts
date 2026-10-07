@@ -40,6 +40,11 @@ export interface SellerOrder {
   shipping_city: string;
   shipping_phone: string;
   payment_method: string;
+  /**
+   * Two-step cancellation: 1 means the buyer has asked to cancel - only then
+   * may the seller confirm it from the status dropdown.
+   */
+  cancel_requested: number | boolean;
   created_at: string;
   updated_at: string;
   customer_name: string;

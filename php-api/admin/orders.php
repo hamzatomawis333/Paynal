@@ -16,7 +16,7 @@ const ORDER_STATUSES = ['pending', 'confirmed', 'processing', 'shipped', 'delive
 // ============================================
 if ($orderId) {
     $stmt = $conn->prepare(
-        "SELECT o.*, u.full_name AS buyer_name, u.email AS buyer_email
+        "SELECT o.*, u.id AS buyer_id, u.full_name AS buyer_name, u.email AS buyer_email
          FROM orders o JOIN users u ON o.user_id = u.id
          WHERE o.id = ?"
     );
@@ -58,6 +58,14 @@ if ($orderId) {
 $status = trim((string) ($_GET['status'] ?? ''));
 $search = trim((string) ($_GET['search'] ?? ''));
 $buyerId = intval($_GET['buyer'] ?? 0);
+$limitRaw = (string) ($_GET['limit'] ?? '');
+$limit = 0;
+if ($limitRaw !== '') {
+    $limit = intval($limitRaw);
+    if ($limit < 1 || $limit > 500) {
+        respond(["error" => "limit must be between 1 and 500"], 400);
+    }
+}
 
 if ($status !== '' && !in_array($status, ORDER_STATUSES, true)) {
     respond(["error" => "Invalid status filter"], 400);
@@ -98,6 +106,11 @@ if ($where) {
     $sql .= " WHERE " . implode(" AND ", $where);
 }
 $sql .= " ORDER BY o.created_at DESC";
+if ($limit > 0) {
+    $sql .= " LIMIT ?";
+    $params[] = $limit;
+    $types .= "i";
+}
 
 $stmt = $conn->prepare($sql);
 if ($params) {
@@ -106,20 +119,44 @@ if ($params) {
 $stmt->execute();
 $orders = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
+// Totals for the paginated UI ("showing X of Y"). Only counted when a
+// limit was requested so the default (unlimited) call stays cheap.
+$totals = [];
+if ($limit > 0) {
+    $countSql = "SELECT COUNT(*) AS n FROM orders o JOIN users u ON o.user_id = u.id";
+    if ($where) {
+        $countSql .= " WHERE " . implode(" AND ", $where);
+    }
+    $countParams = array_slice($params, 0, count($params) - ($limit > 0 ? 1 : 0));
+    $countTypes = $limit > 0 ? substr($types, 0, -1) : $types;
+    $stmt = $conn->prepare($countSql);
+    if ($countParams) {
+        $stmt->bind_param($countTypes, ...$countParams);
+    }
+    $stmt->execute();
+    $totals['orders_total'] = (int) ($stmt->get_result()->fetch_assoc()['n'] ?? 0);
+
+    $totals['buyers_total'] = (int) ($conn->query(
+        "SELECT COUNT(*) AS n FROM users WHERE role = 'buyer'"
+    )->fetch_assoc()['n'] ?? 0);
+}
+
 // Every buyer account (the /admin/orders landing page lists accounts first,
 // then drills into one buyer's orders). ORDER BY is deterministic via the
 // GROUP BY columns, and buyers with zero orders still appear (count 0).
 $buyers = [];
-$buyerRows = $conn->query(
-    "SELECT u.id, u.full_name, u.email, u.avatar_url,
+$buyersSql = "SELECT u.id, u.full_name, u.email, u.avatar_url,
             COUNT(o.id) AS order_count, MAX(o.created_at) AS last_order_at
      FROM users u LEFT JOIN orders o ON o.user_id = u.id
      WHERE u.role = 'buyer'
      GROUP BY u.id, u.full_name, u.email, u.avatar_url
-     ORDER BY u.full_name ASC"
-);
+     ORDER BY u.full_name ASC";
+if ($limit > 0) {
+    $buyersSql .= " LIMIT $limit"; // safe: intval'd above, no user string
+}
+$buyerRows = $conn->query($buyersSql);
 if ($buyerRows) {
     $buyers = $buyerRows->fetch_all(MYSQLI_ASSOC);
 }
 
-respond(["orders" => $orders, "buyers" => $buyers]);
+respond(["orders" => $orders, "buyers" => $buyers] + $totals);

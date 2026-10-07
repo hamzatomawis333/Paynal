@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../payments/gcash-workflow.php';
+require_once __DIR__ . '/../audit-lib.php';
 
 $auth = verifyToken();
 $method = $_SERVER['REQUEST_METHOD'];
@@ -33,6 +34,19 @@ if ($method === 'PUT') {
 
     $body = getBody();
     $touched = false;
+    $changes = [];
+
+    // Snapshot the current values of any key in the request so the audit log
+    // records old -> new instead of just "something changed".
+    foreach (['gcash_number', 'subscription_price'] as $key) {
+        if (array_key_exists($key, $body)) {
+            $stmt = $conn->prepare("SELECT `value` FROM platform_settings WHERE `key` = ?");
+            $stmt->bind_param("s", $key);
+            $stmt->execute();
+            $row = $stmt->get_result()->fetch_assoc();
+            $changes[$key] = ['from' => $row['value'] ?? null];
+        }
+    }
 
     if (array_key_exists('gcash_number', $body)) {
         $gcashNumber = trim((string) ($body['gcash_number'] ?? ''));
@@ -53,6 +67,7 @@ if ($method === 'PUT') {
             ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
         $stmt->bind_param("s", $value);
         $stmt->execute();
+        $changes['gcash_number']['to'] = $value;
         $touched = true;
     }
 
@@ -80,12 +95,15 @@ if ($method === 'PUT') {
             ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
         $stmt->bind_param("s", $value);
         $stmt->execute();
+        $changes['subscription_price']['to'] = $value;
         $touched = true;
     }
 
     if (!$touched) {
         respond(["error" => "No settings provided"], 400);
     }
+
+    logAdminAudit($conn, $auth['user_id'], 'settings.update', 'platform_settings', 0, $changes);
 
     // Return the full merged settings so clients can replace their cache.
     $stmt = $conn->prepare("SELECT `key`, `value` FROM platform_settings");

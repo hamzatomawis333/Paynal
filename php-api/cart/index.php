@@ -5,12 +5,16 @@ $auth = verifyToken();
 $userId = $auth['user_id'];
 $method = $_SERVER['REQUEST_METHOD'];
 
-// GET - List cart items
+// GET - List cart items. The rich product SELECT (same joins as
+// products/index.php) lets the frontend hydrate its cart state directly
+// through apiProductToProduct() instead of keeping a second, diverging
+// shape for the same product.
 if ($method === 'GET') {
-    $stmt = $conn->prepare("SELECT c.*, p.name, p.price, p.image_url, p.stock_quantity,
-        u.full_name as artisan_name
+    $stmt = $conn->prepare("SELECT p.*, c.quantity AS quantity, cat.name AS category_name,
+        cat.slug AS category_slug, u.full_name AS artisan_name
         FROM cart c
         JOIN products p ON c.product_id = p.id
+        JOIN categories cat ON p.category_id = cat.id
         JOIN users u ON p.seller_id = u.id
         WHERE c.user_id = ?");
     $stmt->bind_param("i", $userId);
@@ -58,6 +62,15 @@ if ($method === 'PUT') {
     $quantity  = intval($data['quantity'] ?? 1);
 
     if (!$productId || $quantity < 1) respond(["error" => "Valid product ID and quantity required"], 400);
+
+    // Same stock ceiling as the add path, so a forced quantity can never
+    // exceed what checkout would accept.
+    $stmt = $conn->prepare("SELECT stock_quantity FROM products WHERE id = ?");
+    $stmt->bind_param("i", $productId);
+    $stmt->execute();
+    $product = $stmt->get_result()->fetch_assoc();
+    if (!$product) respond(["error" => "Product not found"], 404);
+    if ((int) $product['stock_quantity'] < $quantity) respond(["error" => "Insufficient stock"], 400);
 
     $stmt = $conn->prepare("UPDATE cart SET quantity = ? WHERE user_id = ? AND product_id = ?");
     $stmt->bind_param("iii", $quantity, $userId, $productId);

@@ -20,7 +20,10 @@ import { getErrorMessage } from "@/lib/errors";
 import type { AdminUser } from "@/types/api";
 
 const AdminUsers = () => {
-  const { data: users, isLoading, isError, refetch, updateUser, deleteUser } = useAdminUsers();
+  const {
+    data: users, isLoading, isError, refetch, updateUser, deleteUser,
+    total, hasMore, loadMore,
+  } = useAdminUsers();
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
 
@@ -218,6 +221,19 @@ const AdminUsers = () => {
                 </TableBody>
               </Table>
             )}
+            {!isLoading && !isError && users?.length ? (
+              <div className="flex flex-col items-center gap-2 border-t px-6 py-4 sm:flex-row sm:justify-between">
+                <p className="text-sm text-muted-foreground">
+                  Showing {users.length} of {total} user{total === 1 ? "" : "s"}
+                  {hasFilters && !hasMore ? " (matching your filters)" : ""}
+                </p>
+                {hasMore && (
+                  <Button variant="outline" size="sm" onClick={loadMore}>
+                    Load more
+                  </Button>
+                )}
+              </div>
+            ) : null}
           </CardContent>
         </Card>
       </div>

@@ -2,8 +2,9 @@ import { resolveApiImageUrl } from "@/lib/api";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { BuyerLayout } from "@/components/buyer/BuyerLayout";
-import { useBuyerOrders } from "@/hooks/useBuyer";
+import { useBuyerOrders, useCancelBuyerOrder } from "@/hooks/useBuyer";
 import { isOrderAwaitingPayment, isRealOrder } from "@/lib/buyer-api";
+import { getErrorMessage } from "@/lib/errors";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -11,7 +12,8 @@ import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
 import { StatusBadge } from "@/components/StatusBadge";
 import { formatPrice, formatDate } from "@/lib/format";
-import { ShoppingBag, ChevronDown, ChevronUp, TriangleAlert } from "lucide-react";
+import { toast } from "sonner";
+import { ShoppingBag, ChevronDown, ChevronUp, TriangleAlert, XCircle, Clock } from "lucide-react";
 
 // Orders whose GCash reference is in but the seller has not verified it yet,
 // or that need the buyer to fix something. Rendered via StatusBadge so the
@@ -20,13 +22,48 @@ const needsAttention = new Set(["awaiting_confirmation", "rejected"]);
 
 const statusFilter = ["all", "pending", "confirmed", "processing", "shipped", "delivered", "cancelled"];
 
+// The buyer may ASK to cancel any time before the order is on a truck; a
+// seller then confirms it. Shipped and delivered are final; cancelled needs no
+// button.
+const cancelableStatuses = new Set(["pending", "confirmed", "processing"]);
+
+const paymentMethodLabel = (code: string) =>
+  code === "cod" ? "Cash on Delivery" : code === "gcash" ? "GCash" : code;
+
 export default function BuyerOrders() {
   const { data: orders, isLoading } = useBuyerOrders();
+  const cancelOrder = useCancelBuyerOrder();
   const [filter, setFilter] = useState("all");
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
+  function handleCancel(orderId: number, orderNumber: string) {
+    if (
+      !window.confirm(
+        `Request cancellation of order ${orderNumber || `#${orderId}`}? The seller has to confirm it before the order is actually cancelled.`
+      )
+    ) {
+      return;
+    }
+    cancelOrder.mutate(orderId, {
+      onSuccess: (res) => {
+        if (res.already) {
+          toast.success(
+            res.cancel_requested
+              ? "You have already requested a cancellation for this order"
+              : "This order is already cancelled"
+          );
+        } else {
+          toast.success("Cancellation requested - waiting for the seller to confirm");
+        }
+      },
+      onError: (err) => toast.error(getErrorMessage(err, "Could not request cancellation")),
+    });
+  }
+
   // Split first, then filter. An order the buyer never paid for is not an order
-  // in their book yet, so it must not appear under "My Orders" or any status tab.
+  // in their book yet, so it must not appear under "My Orders" or any status tab
+  // - EXCEPT once a cancellation starts (requested or confirmed), which moves it
+  // into the real list so it is labelled instead of invited-to-be-paid.
   const realOrders = orders?.filter(isRealOrder) ?? [];
   const unpaidOrders = orders?.filter(isOrderAwaitingPayment) ?? [];
 
@@ -163,7 +200,16 @@ export default function BuyerOrders() {
                       {needsAttention.has(order.payment_status) && (
                         <StatusBadge status={order.payment_status} kind="payment" audience="buyer" />
                       )}
-                      <StatusBadge status={order.status} kind="order" />
+                      {/* Once a cancellation is in flight the live status is
+                          not the story - the badge tells it. */}
+                      <StatusBadge
+                        status={
+                          order.cancel_requested && order.status !== "cancelled"
+                            ? "cancel_requested"
+                            : order.status
+                        }
+                        kind="order"
+                      />
                       {expandedId === order.id ? (
                         <ChevronUp className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                       ) : (
@@ -181,7 +227,7 @@ export default function BuyerOrders() {
                       </div>
                       <div>
                         <p className="mb-1 text-xs font-medium text-muted-foreground">Payment Method</p>
-                        <p className="text-sm capitalize text-foreground">{order.payment_method}</p>
+                        <p className="text-sm text-foreground">{paymentMethodLabel(order.payment_method)}</p>
                       </div>
                     </div>
                     {order.items?.length > 0 && (
@@ -218,13 +264,44 @@ export default function BuyerOrders() {
                       </div>
                     </div>
                     {/* Payment detail lives on its own page so there is a single
-                        place that knows how to submit a reference. */}
-                    <div className="mt-4 flex justify-end border-t border-border pt-4">
-                      <Button asChild size="sm" variant="outline">
-                        <Link to={`/account/orders/${order.id}/pay`}>
-                          View payment details
-                        </Link>
-                      </Button>
+                        place that knows how to submit a reference. A COD order
+                        has nothing to submit. Cancellation is two-step: the
+                        buyer can only ask; once asked, the button parks until
+                        a seller confirms. */}
+                    <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-border pt-4">
+                      {order.payment_method !== "cod" && (
+                        <Button asChild size="sm" variant="outline">
+                          <Link to={`/account/orders/${order.id}/pay`}>
+                            View payment details
+                          </Link>
+                        </Button>
+                      )}
+                      {cancelableStatuses.has(order.status) &&
+                        (order.cancel_requested === 1 || order.cancel_requested === true ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled
+                            aria-label={`Cancellation requested for order ${order.order_number || `#${order.id}`}`}
+                          >
+                            <Clock className="mr-1.5 h-4 w-4" aria-hidden="true" />
+                            Cancellation requested
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            disabled={cancelOrder.isPending}
+                            onClick={() => handleCancel(order.id, order.order_number)}
+                            aria-label={`Request cancellation of order ${order.order_number || `#${order.id}`}`}
+                          >
+                            <XCircle className="mr-1.5 h-4 w-4" aria-hidden="true" />
+                            {cancelOrder.isPending && cancelOrder.variables === order.id
+                              ? "Requesting..."
+                              : "Request cancellation"}
+                          </Button>
+                        ))}
                     </div>
                   </CardContent>
                 )}

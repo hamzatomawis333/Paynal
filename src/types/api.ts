@@ -15,29 +15,9 @@ export type ApiId = string;
 export type ApiNumber = number;
 
 // ==================== CART ====================
-
-export interface ApiCartItem {
-  id: ApiId;
-  user_id: ApiId;
-  product_id: ApiId;
-  quantity: ApiId;
-  created_at: string;
-  updated_at: string;
-  // joined from products
-  name: string;
-  price: ApiId;
-  image_url: string | null;
-  stock_quantity: ApiId;
-  // joined from users (the artisan)
-  artisan_name: string;
-  /** price * quantity, computed server-side */
-  subtotal: ApiNumber;
-}
-
-export interface ApiCartResponse {
-  cart: ApiCartItem[];
-  total: ApiNumber;
-}
+// The cart response type lives in @/lib/api (ApiCartRow): its rows are just
+// the full ApiProduct shape plus the cart quantity, so keeping it next to
+// ApiProduct avoids a second, drift-prone copy of the product columns.
 
 // ==================== ORDERS ====================
 

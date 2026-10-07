@@ -30,7 +30,7 @@ const AdminOrders = () => {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
 
-  const { data, isLoading, isError, refetch } = useAdminOrders();
+  const { data, isLoading, isError, refetch, total, hasMore, loadMore } = useAdminOrders(undefined, true);
   const buyers = data?.buyers ?? [];
 
   const filtered = useMemo(() => {
@@ -153,6 +153,18 @@ const AdminOrders = () => {
                 </TableBody>
               </Table>
             )}
+            {!isLoading && !isError && buyers.length ? (
+              <div className="flex flex-col items-center gap-2 border-t px-6 py-4 sm:flex-row sm:justify-between">
+                <p className="text-sm text-muted-foreground">
+                  Showing {buyers.length} of {total} buyer account{total === 1 ? "" : "s"}
+                </p>
+                {hasMore && (
+                  <Button variant="outline" size="sm" onClick={loadMore}>
+                    Load more
+                  </Button>
+                )}
+              </div>
+            ) : null}
           </CardContent>
         </Card>
       </div>
