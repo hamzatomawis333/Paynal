@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { logoutUser, getStoredUser, type ApiUser } from "@/lib/api";
+import { getStoredUser, type ApiUser } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { ColorPicker } from "@/components/ui/ColorPicker";
@@ -67,7 +67,7 @@ export function DashboardLayout({
   const location = useLocation();
   const navigate = useNavigate();
 
-  const authUser = useAuth().user;
+  const { user: authUser, logout } = useAuth();
   const user: ApiUser | null = authUser ?? getStoredUser();
 
   // Longest match wins so nested routes highlight the right item
@@ -83,7 +83,7 @@ export function DashboardLayout({
   const headerLabel = items.find((i) => i.href === activeHref)?.label ?? title;
 
   const handleLogout = () => {
-    logoutUser();
+    logout();
     navigate("/auth");
   };
 

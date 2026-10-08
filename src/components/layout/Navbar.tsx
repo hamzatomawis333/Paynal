@@ -10,7 +10,8 @@ import {
   ShoppingCart, Menu, X, User, Search, Store, LogOut, Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getStoredUser, isLoggedIn, logoutUser } from "@/lib/api";
+import { getStoredUser, isLoggedIn } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
 
 const navLinks = [
   { href: "/", label: "Home", exact: true },
@@ -35,6 +36,7 @@ export function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { totalItems } = useCart();
+  const { logout } = useAuth();
   const loggedIn = isLoggedIn();
   const user = getStoredUser();
   const isSeller = user?.role === "seller";
@@ -50,7 +52,7 @@ export function Navbar() {
   const RoleIcon = roleIcon;
 
   const handleLogout = () => {
-    logoutUser();
+    logout();
     navigate("/");
     window.location.reload();
   };

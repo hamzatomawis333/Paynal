@@ -209,9 +209,23 @@ export async function fetchCurrentUser() {
   return apiFetch<{ user: ApiUser }>("/auth/me.php");
 }
 
+// Local cart cache keys - owned here (like the auth keys) so logout can wipe
+// them synchronously; CartContext imports them for its own reads/writes.
+export const CART_ITEMS_KEY = "maranao_cart_items";
+export const CART_SELECTED_KEY = "maranao_cart_selected";
+/** Which account populated the locally stored cart (merge vs replace). */
+export const CART_OWNER_KEY = "maranao_cart_owner";
+
 export function logoutUser() {
   localStorage.removeItem("auth_token");
   localStorage.removeItem("auth_user");
+  // The locally cached cart belongs to the account that just signed out.
+  // Clear it here, synchronously, so even a full page reload immediately
+  // after logout cannot resurrect the previous buyer's items and badge.
+  // The SERVER cart is untouched and comes back on the next login.
+  localStorage.removeItem(CART_ITEMS_KEY);
+  localStorage.removeItem(CART_SELECTED_KEY);
+  localStorage.removeItem(CART_OWNER_KEY);
 }
 
 export function getStoredUser(): ApiUser | null {

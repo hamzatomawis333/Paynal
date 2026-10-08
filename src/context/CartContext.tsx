@@ -16,14 +16,12 @@ import {
   updateCartItem,
   removeCartItem,
   clearCartApi,
+  CART_ITEMS_KEY,
+  CART_SELECTED_KEY,
+  CART_OWNER_KEY,
   type ApiCartRow,
 } from "@/lib/api";
 import { getErrorMessage } from "@/lib/errors";
-
-const CART_ITEMS_KEY = "maranao_cart_items";
-const CART_SELECTED_KEY = "maranao_cart_selected";
-/** Which account populated the locally stored cart (merge vs replace). */
-const CART_OWNER_KEY = "maranao_cart_owner";
 
 /** Reads a JSON list from localStorage, falling back to [] on missing/corrupt data. */
 function readStored<T>(key: string): T[] {
@@ -189,11 +187,27 @@ export function CartProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, currentUserId]);
 
-  // On logout the local items stay visible (nice continuity), but they now
-  // belong to no account: the next login decides merge vs replace.
+  // On logout the local cart must vanish along with the navbar badge: the
+  // items belong to the account that added them, and whoever uses this
+  // browser next should see an empty cart, not someone else's. The SERVER
+  // cart is untouched - logging back in restores it from there.
+  //
+  // Only the actual logged-in -> guest transition clears. A guest who builds
+  // their own local cart must not have it wiped on every page reload, so
+  // `wasLoggedIn` distinguishes "just logged out" from "is a guest".
+  const wasLoggedIn = useRef(false);
   useEffect(() => {
-    if (!authLoading && currentUserId === null) {
+    if (authLoading) return;
+    if (currentUserId !== null) {
+      wasLoggedIn.current = true;
+      return;
+    }
+    if (wasLoggedIn.current) {
+      wasLoggedIn.current = false;
       syncedUserId.current = null;
+      setItems([]);
+      setSelectedIds([]);
+      writeOwner(null);
     }
   }, [authLoading, currentUserId]);
 
