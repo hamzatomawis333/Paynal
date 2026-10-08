@@ -111,6 +111,11 @@
     --sidebar-accent-foreground: 0 0% 98%;
     --sidebar-border: 25 18% 22%;
     --sidebar-ring: 42 60% 55%;
+
+    /* Warm dark versions of the decorative gradients - without these the
+       hero keeps its near-white light-mode gradient in dark mode. */
+    --gradient-hero: linear-gradient(180deg, hsl(25 25% 11%) 0%, hsl(28 22% 14%) 100%);
+    --gradient-card: linear-gradient(145deg, hsl(25 22% 13%), hsl(25 22% 10%));
   }
 }
 
